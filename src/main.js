@@ -29,8 +29,10 @@ function render() {
     return;
   }
 
+  let hadNotesFocus = false;
   if (state && (state.phase === 'guessing' || state.phase === 'finished')) {
     const notesEl = getEl('notes-field');
+    hadNotesFocus = !!(notesEl && document.activeElement === notesEl);
     if (notesEl) gameNotesLocal = notesEl.value;
   } else {
     gameNotesLocal = null;
@@ -39,6 +41,7 @@ function render() {
   const isGameScreen = state && (state.phase === 'guessing' || state.phase === 'finished');
   app.classList.toggle('game-screen', !!isGameScreen);
   bindLobby();
+  if (hadNotesFocus) getEl('notes-field')?.focus();
 }
 
 function renderHome() {
@@ -216,7 +219,7 @@ function renderLobby() {
       <p class="lobby-name-display">Lobby: <strong>${escapeHtml(state.name)}</strong></p>
       ${me && state.nextPlayerForWord && (state.players?.length || 0) >= 2 ? `
       <div class="character-section card">
-        <label>Word for <strong>${escapeHtml(state.nextPlayerForWord.playerName)}</strong></label>
+        <label>Targeting <strong>${escapeHtml(state.nextPlayerForWord.playerName)}</strong></label>
         <p class="subtitle" style="margin:0 0 0.5rem; font-size:0.85rem;">The word that will go on their forehead. You can change this until you ready up.</p>
         <div class="character-row">
           <input type="text" id="word-for-next-input" placeholder="e.g. Einstein" value="${escapeHtml(state.myWordForNext || '')}" />
@@ -229,7 +232,7 @@ function renderLobby() {
         ${(state.players || []).map((p, idx) => {
           const n = state.players.length;
           const nextPlayer = n >= 2 ? state.players[(idx + 1) % n] : null;
-          const targetLabel = nextPlayer ? `Word for ${escapeHtml(nextPlayer.name)}` : '';
+          const targetLabel = nextPlayer ? `Targeting ${escapeHtml(nextPlayer.name)}` : '';
           return `
           <li class="${p.isYou ? 'is-you' : ''} ${isHost ? 'draggable' : ''}" data-player-id="${escapeHtml(p.id)}" ${isHost ? 'draggable="true"' : ''}>
             ${isHost ? '<span class="drag-handle" aria-hidden="true">⋮⋮</span>' : ''}
@@ -252,7 +255,7 @@ function renderLobby() {
       ${target
         ? `
         <p class="subtitle">Enter the word (e.g. celebrity, character) for the player below. It will appear on their "forehead" for others to see.</p>
-        <label>Word for <strong>${escapeHtml(target.playerName)}</strong></label>
+        <label>Targeting <strong>${escapeHtml(target.playerName)}</strong></label>
         <div class="guess-form">
           <input type="text" id="assign-word" placeholder="e.g. Einstein" value="${escapeHtml(state.preFilledWord || '')}" />
           <button class="btn" id="btn-assign">Submit</button>
@@ -453,7 +456,7 @@ function renderGameLayout(opts) {
     currentRound,
   } = opts;
   const n = orderedPlayers.length;
-  const radius = 42;
+  const radius = 50;
   const dotHalf = 58;
   const wrongGuessesList = (currentTurnWrongGuesses && currentTurnWrongGuesses.length)
     ? currentTurnWrongGuesses.map(w => `${escapeHtml(w.playerName)}: "${escapeHtml(w.guess)}"`).join(' • ')
