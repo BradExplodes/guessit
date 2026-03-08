@@ -265,6 +265,7 @@ function renderLobby() {
       : isMyTurn
         ? "It's your turn to guess!"
         : `It's ${escapeHtml(currentDisplayName)}'s turn to guess`;
+    const currentRound = currentPlayer ? (currentPlayer.roundCount || 0) + 1 : 1;
     main = renderGameLayout({
       orderedPlayers,
       placements,
@@ -277,6 +278,7 @@ function renderLobby() {
       isHost: state.isHost,
       myNotes: state.myNotes,
       lobbyName: state.name,
+      currentRound,
     });
   } else {
     main = '<p class="subtitle">Loading…</p>';
@@ -399,10 +401,16 @@ function bindLobby() {
   getEl('btn-return-lobby')?.addEventListener('click', () => {
     socket?.emit('return-to-lobby', { lobbyId, playerId });
   });
-  getEl('btn-save-notes')?.addEventListener('click', () => {
-    const notes = getEl('notes-field')?.value ?? '';
-    socket?.emit('update-notes', { lobbyId, playerId, notes });
-  });
+  (() => {
+    let notesDebounce = null;
+    getEl('notes-field')?.addEventListener('input', () => {
+      clearTimeout(notesDebounce);
+      notesDebounce = setTimeout(() => {
+        const notes = getEl('notes-field')?.value ?? '';
+        socket?.emit('update-notes', { lobbyId, playerId, notes });
+      }, 400);
+    });
+  })();
   getEl('btn-leave')?.addEventListener('click', () => {
     if (socket) socket.disconnect();
     socket = null;
@@ -435,9 +443,11 @@ function renderGameLayout(opts) {
     isMyTurn,
     isHost,
     myNotes,
+    currentRound,
   } = opts;
   const n = orderedPlayers.length;
-  const radius = 42;
+  const radius = 38;
+  const dotHalf = 44;
   const playerDots = orderedPlayers.map((p, i) => {
     const angleDeg = n ? (i / n) * 360 : 0;
     const angleRad = (angleDeg - 90) * (Math.PI / 180);
@@ -445,46 +455,55 @@ function renderGameLayout(opts) {
     const top = 50 + radius * Math.sin(angleRad);
     const active = p.isCurrentTurn;
     const place = placements.get(p.id);
-    const label = p.name.length > 8 ? p.name.slice(0, 7) + '…' : p.name;
+    const label = p.name.length > 10 ? p.name.slice(0, 9) + '…' : p.name;
     return `
-      <div class="player-dot ${active ? 'active' : 'inactive'} ${p.isYou ? 'you' : ''}" style="left:${left}%;top:${top}%;margin-left:-24px;margin-top:-24px;" title="${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}">
+      <div class="player-dot ${active ? 'active' : 'inactive'} ${p.isYou ? 'you' : ''}" style="left:${left}%;top:${top}%;margin-left:-${dotHalf}px;margin-top:-${dotHalf}px;" title="${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}">
         ${label}
         ${p.hasWon && place != null ? `<span class="badge badge-won">${ordinal(place)}</span>` : ''}
       </div>
     `;
   }).join('');
 
+  const centerContent = phase === 'guessing' && isMyTurn
+    ? `
+      <p class="turn-label">${escapeHtml(turnLabel)}</p>
+      <p class="center-round">Round ${currentRound}</p>
+      <div class="guess-form center-guess-form">
+        <input type="text" id="guess-input" placeholder="Your guess" autocomplete="off" />
+        <div class="center-guess-buttons">
+          <button class="btn" id="btn-guess">Guess</button>
+          <button class="btn btn-secondary" id="btn-skip">Skip</button>
+        </div>
+      </div>
+    `
+    : `
+      <span class="turn-arrow"></span>
+      <p class="center-round">Round ${currentRound}</p>
+      <p class="turn-label">${escapeHtml(turnLabel)}</p>
+    `;
+
   return `
     <div class="game-layout">
       <div class="game-left">
         <div class="player-circle">
           <div class="player-circle-center">
-            <span class="turn-arrow"></span>
-            <p class="turn-label">${escapeHtml(turnLabel)}</p>
+            ${centerContent}
           </div>
           <div class="player-dots">${playerDots}</div>
         </div>
       </div>
       <div class="game-right">
         <div class="game-info-panel card">
-          <h3>Round / game info</h3>
+          <h3>Game info</h3>
           <p class="lobby-name-display" style="margin-bottom:0.5rem;">Lobby: <strong>${escapeHtml((opts.lobbyName || ''))}</strong></p>
           ${turnSecondsLeft != null ? `<p class="turn-timer">Time left: <strong id="turn-countdown">${turnSecondsLeft}</strong>s</p>` : ''}
           ${lastWrongGuess ? `<p class="wrong-guess-msg">${escapeHtml(lastWrongGuess.playerName)} guessed "${escapeHtml(lastWrongGuess.guess)}" — wrong!</p>` : ''}
           ${myAssignedWord ? `<p class="subtitle" style="margin-bottom:0.5rem;">Your word was: <strong>${escapeHtml(myAssignedWord)}</strong></p>` : ''}
-          ${phase === 'guessing' && isMyTurn ? `
-            <div class="guess-form">
-              <input type="text" id="guess-input" placeholder="Your guess" autocomplete="off" />
-              <button class="btn" id="btn-guess">Guess</button>
-              <button class="btn btn-secondary" id="btn-skip">Skip</button>
-            </div>
-          ` : ''}
           ${phase === 'finished' && isHost ? `<button class="btn" id="btn-return-lobby">Return to lobby</button>` : ''}
         </div>
         <div class="notepad-panel card">
           <label>Your notes</label>
-          <textarea id="notes-field" placeholder="Jot down clues from Discord…">${escapeHtml(myNotes || '')}</textarea>
-          <button class="btn btn-secondary" id="btn-save-notes">Save notes</button>
+          <textarea id="notes-field" placeholder="Jot down clues from Discord…" rows="6">${escapeHtml(myNotes || '')}</textarea>
         </div>
         <div class="game-leave-row">
           <button class="btn btn-secondary" id="btn-leave">Leave lobby</button>
