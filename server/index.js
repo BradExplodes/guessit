@@ -68,14 +68,14 @@ if (distExists) {
 // --- Socket.io ---
 
 io.on('connection', (socket) => {
-  socket.on('join-lobby', ({ lobbyId, playerId }) => {
+  socket.on('join-lobby', async ({ lobbyId, playerId }) => {
     const lobby = getLobby(lobbyId);
     if (!lobby) return socket.emit('error', { message: 'Lobby not found' });
     const player = lobby.players.find(p => p.id === playerId);
     if (!player) return socket.emit('error', { message: 'Player not found' });
     socket.join(lobbyId);
     socketToPlayer.set(socket.id, { lobbyId, playerId });
-    socket.emit('state', lobby.toClient(playerId));
+    await broadcastLobbyState(lobbyId);
   });
 
   async function broadcastLobbyState(lobbyId) {
