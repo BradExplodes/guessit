@@ -7,6 +7,7 @@ let state = null;
 let lobbyId = null;
 let playerId = null;
 let hostPassword = null;
+let turnCountdownIntervalId = null;
 
 function getEl(id) {
   return document.getElementById(id);
@@ -150,7 +151,10 @@ function connectSocket() {
     const app = getEl('app');
     const div = document.createElement('div');
     div.className = `guess-result ${r.correct ? 'correct' : 'wrong'}`;
-    div.textContent = r.correct ? `Correct! You got it in ${r.roundsUsed} round(s).` : 'Not quite — try again next turn!';
+    const placementStr = r.placement ? ordinal(r.placement) : '';
+    div.textContent = r.correct
+      ? (placementStr ? `Correct! You got ${placementStr} place in ${r.roundsUsed} round(s).` : `Correct! You got it in ${r.roundsUsed} round(s).`)
+      : 'Not quite — try again next turn!';
     const form = app.querySelector('.guess-form');
     if (form) form.after(div);
     else app.querySelector('.card')?.append(div);
@@ -176,15 +180,19 @@ function renderLobby() {
 
   let main = '';
   if (phase === 'waiting') {
+    const isHost = state.isHost;
     main = `
       <p class="lobby-name-display">Lobby: <strong>${escapeHtml(state.name)}</strong></p>
-      <ul class="players-list">
-        ${(state.players || []).map(p => `
-          <li class="${p.isYou ? 'is-you' : ''}">
+      ${isHost ? '<p class="subtitle" style="margin-bottom:0.5rem; font-size:0.85rem;">Order = who assigns for whom (first assigns for second, etc). Drag to reorder.</p>' : ''}
+      <ul class="players-list ${isHost ? 'players-list-draggable' : ''}" id="waiting-players-list">
+        ${(state.players || []).map((p, idx) => `
+          <li class="${p.isYou ? 'is-you' : ''} ${isHost ? 'draggable' : ''}" data-player-id="${escapeHtml(p.id)}" ${isHost ? 'draggable="true"' : ''}>
+            ${isHost ? '<span class="drag-handle" aria-hidden="true">⋮⋮</span>' : ''}
             <span>${escapeHtml(p.name)} ${p.isYou ? ' (you)' : ''}</span>
           </li>
         `).join('')}
       </ul>
+      ${isHost ? '<div class="lobby-order-actions"><button class="btn btn-secondary" id="btn-random-order">Random order</button></div>' : ''}
       ${state.canStart ? '<button class="btn" id="btn-start">Start game</button>' : '<p class="subtitle">Waiting for host to start (need at least 2 players).</p>'}
       <p class="subtitle" style="margin-top:1rem; font-size:0.85rem;"><strong>Multiplayer:</strong> Everyone must open the same game link. Copy the link below and share it. If friends are on other devices, open this page via your network URL (e.g. http://192.168.1.x:5173) first, then copy that link.</p>
       <button class="btn btn-secondary" id="btn-copy-link">Copy game link</button>
@@ -207,6 +215,10 @@ function renderLobby() {
     `;
   } else if (phase === 'guessing' || phase === 'finished') {
     const isMyTurn = me?.isCurrentTurn;
+    const placements = getPlacements(state.players || []);
+    const turnSecondsLeft = state.turnStartedAt && phase === 'guessing' && isMyTurn
+      ? Math.max(0, 60 - Math.floor((Date.now() - state.turnStartedAt) / 1000))
+      : null;
     main = `
       <p class="lobby-name-display">Lobby: <strong>${escapeHtml(state.name)}</strong></p>
       ${phase === 'finished'
@@ -214,23 +226,29 @@ function renderLobby() {
         : isMyTurn
           ? '<div class="turn-banner you">Your turn — guess the name on your forehead!</div>'
           : `<div class="turn-banner">${escapeHtml(currentName || '')}’s turn</div>`}
+      ${turnSecondsLeft != null ? `<p class="turn-timer">Time left: <strong id="turn-countdown">${turnSecondsLeft}</strong>s</p>` : ''}
       <ul class="players-list">
-        ${(state.players || []).map(p => `
+        ${(state.players || []).map(p => {
+          const place = placements.get(p.id);
+          return `
           <li class="${p.isYou ? 'is-you ' : ''}${p.isCurrentTurn ? 'is-turn' : ''}">
             <span>${escapeHtml(p.name)} ${p.isYou ? ' (you)' : ''}</span>
             <span>
-              ${p.hasWon ? `<span class="badge badge-won">Won</span> <span class="badge badge-rounds">${p.roundsToWin} round(s)</span>` : (p.isCurrentTurn ? '<span class="badge">Guessing…</span>' : '')}
+              ${p.hasWon && place != null ? `<span class="badge badge-won">${ordinal(place)}</span> <span class="badge badge-rounds">${p.roundsToWin} round(s)</span>` : (p.isCurrentTurn ? '<span class="badge">Guessing…</span>' : '')}
             </span>
+            ${p.word != null ? `<span class="player-word">${escapeHtml(p.word)}</span>` : ''}
           </li>
-        `).join('')}
+        `}).join('')}
       </ul>
       ${state.myAssignedWord ? `<p class="subtitle">Your word was: <strong>${escapeHtml(state.myAssignedWord)}</strong></p>` : ''}
       ${phase === 'guessing' && isMyTurn ? `
         <div class="guess-form">
-          <input type="text" id="guess-input" placeholder="Your guess" />
+          <input type="text" id="guess-input" placeholder="Your guess" autocomplete="off" />
           <button class="btn" id="btn-guess">Guess</button>
+          <button class="btn btn-secondary" id="btn-skip">Skip</button>
         </div>
       ` : ''}
+      ${phase === 'finished' && state.isHost ? `<button class="btn" id="btn-return-lobby">Return to lobby</button>` : ''}
       <div class="notes-section card">
         <label>Your notes</label>
         <textarea id="notes-field" placeholder="Jot down clues from Discord…">${escapeHtml(state.myNotes || '')}</textarea>
@@ -251,6 +269,66 @@ function renderLobby() {
 }
 
 function bindLobby() {
+  if (turnCountdownIntervalId) {
+    clearInterval(turnCountdownIntervalId);
+    turnCountdownIntervalId = null;
+  }
+  const countdownEl = getEl('turn-countdown');
+  if (countdownEl && state?.turnStartedAt) {
+    turnCountdownIntervalId = setInterval(() => {
+      const el = getEl('turn-countdown');
+      if (!el) {
+        clearInterval(turnCountdownIntervalId);
+        turnCountdownIntervalId = null;
+        return;
+      }
+      const secs = Math.max(0, 60 - Math.floor((Date.now() - state.turnStartedAt) / 1000));
+      el.textContent = secs;
+    }, 1000);
+  }
+  const listEl = getEl('waiting-players-list');
+  if (listEl && state?.isHost) {
+    listEl.addEventListener('dragstart', (e) => {
+      const li = e.target.closest('li[data-player-id]');
+      if (!li) return;
+      e.dataTransfer.setData('text/plain', li.dataset.playerId);
+      e.dataTransfer.effectAllowed = 'move';
+      li.classList.add('dragging');
+    });
+    listEl.addEventListener('dragend', (e) => {
+      e.target.closest('li')?.classList.remove('dragging');
+    });
+    listEl.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      listEl.querySelectorAll('li').forEach(el => el.classList.remove('drag-over'));
+      const li = e.target.closest('li[data-player-id]');
+      if (li) li.classList.add('drag-over');
+    });
+    listEl.addEventListener('dragleave', (e) => {
+      if (!listEl.contains(e.relatedTarget)) {
+        listEl.querySelectorAll('li').forEach(el => el.classList.remove('drag-over'));
+      }
+    });
+    listEl.addEventListener('drop', (e) => {
+      e.preventDefault();
+      listEl.querySelectorAll('li').forEach(el => el.classList.remove('drag-over'));
+      const draggedId = e.dataTransfer.getData('text/plain');
+      const dropLi = e.target.closest('li[data-player-id]');
+      if (!draggedId || !dropLi || dropLi.dataset.playerId === draggedId) return;
+      const items = listEl.querySelectorAll('li[data-player-id]');
+      const currentOrder = [...items].map(el => el.dataset.playerId);
+      const without = currentOrder.filter(id => id !== draggedId);
+      const dropId = dropLi.dataset.playerId;
+      const insertIdx = without.indexOf(dropId);
+      if (insertIdx === -1) return;
+      without.splice(insertIdx, 0, draggedId);
+      socket?.emit('reorder-players', { lobbyId, playerId, playerIds: without });
+    });
+  }
+  getEl('btn-random-order')?.addEventListener('click', () => {
+    socket?.emit('randomize-order', { lobbyId, playerId });
+  });
   getEl('btn-start')?.addEventListener('click', () => {
     socket?.emit('start-game', { lobbyId, playerId });
   });
@@ -267,10 +345,23 @@ function bindLobby() {
     if (!word) return;
     socket?.emit('submit-assignment', { lobbyId, playerId, word });
   });
-  getEl('btn-guess')?.addEventListener('click', () => {
+  const submitGuessFromForm = () => {
     const guess = getEl('guess-input')?.value?.trim();
     if (!guess) return;
     socket?.emit('submit-guess', { lobbyId, playerId, guess });
+  };
+  getEl('btn-guess')?.addEventListener('click', submitGuessFromForm);
+  getEl('guess-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submitGuessFromForm();
+    }
+  });
+  getEl('btn-skip')?.addEventListener('click', () => {
+    socket?.emit('skip-turn', { lobbyId, playerId });
+  });
+  getEl('btn-return-lobby')?.addEventListener('click', () => {
+    socket?.emit('return-to-lobby', { lobbyId, playerId });
   });
   getEl('btn-save-notes')?.addEventListener('click', () => {
     const notes = getEl('notes-field')?.value ?? '';
@@ -294,6 +385,19 @@ function escapeHtml(s) {
   const div = document.createElement('div');
   div.textContent = s;
   return div.innerHTML;
+}
+
+function ordinal(n) {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function getPlacements(players) {
+  const won = players.filter(p => p.hasWon && p.roundsToWin != null).sort((a, b) => a.roundsToWin - b.roundsToWin);
+  const map = new Map();
+  won.forEach((p, i) => map.set(p.id, i + 1));
+  return map;
 }
 
 const params = new URLSearchParams(location.search);

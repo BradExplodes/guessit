@@ -5,7 +5,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { createLobby, joinLobby, getLobby, startGame, submitAssignment, submitGuess, updateNotes } from './lobby.js';
+import { createLobby, joinLobby, getLobby, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby, reorderPlayers, randomizeOrder } from './lobby.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
@@ -20,6 +20,9 @@ const io = new Server(httpServer, { cors: { origin: true } });
 
 // In-memory: socket id -> { lobbyId, playerId }
 const socketToPlayer = new Map();
+// Per-lobby turn timer: lobbyId -> { timeoutId }
+const lobbyTurnTimers = new Map();
+const TURN_SECONDS = 60;
 
 // --- REST API ---
 
@@ -90,6 +93,30 @@ io.on('connection', (socket) => {
     }
   }
 
+  function clearLobbyTurnTimer(lobbyId) {
+    const entry = lobbyTurnTimers.get(lobbyId);
+    if (entry?.timeoutId) clearTimeout(entry.timeoutId);
+    lobbyTurnTimers.delete(lobbyId);
+  }
+
+  function setLobbyTurnTimer(lobbyId) {
+    clearLobbyTurnTimer(lobbyId);
+    const lobby = getLobby(lobbyId);
+    if (!lobby || lobby.phase !== 'guessing') return;
+    const currentIdx = lobby.order[lobby.currentTurnIndex];
+    const currentPlayer = lobby.players[currentIdx];
+    if (!currentPlayer) return;
+    const timeoutId = setTimeout(async () => {
+      lobbyTurnTimers.delete(lobbyId);
+      try {
+        skipTurn(lobby, currentPlayer.id);
+        await broadcastLobbyState(lobbyId);
+        setLobbyTurnTimer(lobbyId);
+      } catch (_) {}
+    }, TURN_SECONDS * 1000);
+    lobbyTurnTimers.set(lobbyId, { timeoutId });
+  }
+
   socket.on('start-game', async ({ lobbyId, playerId }) => {
     const lobby = getLobby(lobbyId);
     if (!lobby) return socket.emit('error', { message: 'Lobby not found' });
@@ -107,6 +134,7 @@ io.on('connection', (socket) => {
     try {
       submitAssignment(lobby, playerId, word);
       await broadcastLobbyState(lobbyId);
+      if (lobby.phase === 'guessing') setLobbyTurnTimer(lobbyId);
     } catch (e) {
       socket.emit('error', { message: e.message });
     }
@@ -116,9 +144,58 @@ io.on('connection', (socket) => {
     const lobby = getLobby(lobbyId);
     if (!lobby) return socket.emit('error', { message: 'Lobby not found' });
     try {
+      clearLobbyTurnTimer(lobbyId);
       const result = submitGuess(lobby, playerId, guess);
       await broadcastLobbyState(lobbyId);
+      setLobbyTurnTimer(lobbyId);
       if (result) socket.emit('guess-result', result);
+    } catch (e) {
+      socket.emit('error', { message: e.message });
+    }
+  });
+
+  socket.on('skip-turn', async ({ lobbyId, playerId }) => {
+    const lobby = getLobby(lobbyId);
+    if (!lobby) return socket.emit('error', { message: 'Lobby not found' });
+    try {
+      clearLobbyTurnTimer(lobbyId);
+      skipTurn(lobby, playerId);
+      await broadcastLobbyState(lobbyId);
+      setLobbyTurnTimer(lobbyId);
+    } catch (e) {
+      socket.emit('error', { message: e.message });
+    }
+  });
+
+  socket.on('return-to-lobby', async ({ lobbyId, playerId }) => {
+    const lobby = getLobby(lobbyId);
+    if (!lobby) return socket.emit('error', { message: 'Lobby not found' });
+    try {
+      clearLobbyTurnTimer(lobbyId);
+      returnToLobby(lobby, playerId);
+      await broadcastLobbyState(lobbyId);
+    } catch (e) {
+      socket.emit('error', { message: e.message });
+    }
+  });
+
+  socket.on('reorder-players', async ({ lobbyId, playerId, playerIds }) => {
+    const lobby = getLobby(lobbyId);
+    if (!lobby) return socket.emit('error', { message: 'Lobby not found' });
+    try {
+      reorderPlayers(lobby, playerId, playerIds);
+      await broadcastLobbyState(lobbyId);
+    } catch (e) {
+      socket.emit('error', { message: e.message });
+    }
+  });
+
+  socket.on('randomize-order', async ({ lobbyId, playerId }) => {
+    const lobby = getLobby(lobbyId);
+    if (!lobby) return socket.emit('error', { message: 'Lobby not found' });
+    try {
+      randomizeOrder(lobby, playerId);
+      await broadcastLobbyState(lobbyId);
     } catch (e) {
       socket.emit('error', { message: e.message });
     }

@@ -165,6 +165,40 @@ textarea {
   box-shadow: 0 0 0 2px var(--accent);
 }
 
+.players-list-draggable {
+  user-select: none;
+}
+
+.players-list li.draggable {
+  cursor: grab;
+  padding-left: 0.5rem;
+}
+
+.players-list li.draggable:active {
+  cursor: grabbing;
+}
+
+.players-list li.dragging {
+  opacity: 0.5;
+}
+
+.players-list li.drag-over {
+  box-shadow: 0 0 0 2px var(--accent);
+  background: var(--border);
+}
+
+.drag-handle {
+  color: var(--text-muted);
+  cursor: grab;
+  margin-right: 0.5rem;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.lobby-order-actions {
+  margin-bottom: 1rem;
+}
+
 .badge {
   font-size: 0.7rem;
   font-weight: 600;
@@ -203,6 +237,22 @@ textarea {
 
 .turn-banner.you {
   animation: pulse 2s ease-in-out infinite;
+}
+
+.turn-timer {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin: -0.5rem 0 1rem;
+}
+
+.turn-timer strong {
+  color: var(--warning);
+}
+
+.player-word {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 @keyframes pulse {

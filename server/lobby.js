@@ -40,6 +40,29 @@ function joinLobby(lobbyName, password, playerName) {
   return { lobby, player };
 }
 
+function reorderPlayers(lobby, playerId, playerIds) {
+  if (lobby.phase !== 'waiting') throw new Error('Can only reorder in lobby');
+  if (lobby.creatorId !== playerId) throw new Error('Only the host can reorder');
+  const currentIds = new Set(lobby.players.map(p => p.id));
+  const requested = [...new Set(playerIds)];
+  if (requested.length !== lobby.players.length || requested.some(id => !currentIds.has(id))) {
+    throw new Error('Invalid order');
+  }
+  const byId = new Map(lobby.players.map(p => [p.id, p]));
+  lobby.players = requested.map(id => byId.get(id));
+}
+
+function randomizeOrder(lobby, playerId) {
+  if (lobby.phase !== 'waiting') throw new Error('Can only randomize in lobby');
+  if (lobby.creatorId !== playerId) throw new Error('Only the host can randomize');
+  const arr = [...lobby.players];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  lobby.players = arr;
+}
+
 function startGame(lobby, playerId) {
   if (lobby.phase !== 'waiting') throw new Error('Game already started');
   if (lobby.players.length < 2) throw new Error('Need at least 2 players');
@@ -62,6 +85,7 @@ function submitAssignment(lobby, playerId, word) {
     });
     lobby.phase = 'guessing';
     lobby.currentTurnIndex = 0;
+    lobby.turnStartedAt = Date.now();
   }
 }
 
@@ -79,7 +103,16 @@ function submitGuess(lobby, playerId, guess) {
     currentPlayer.roundsToWin = currentPlayer.roundCount;
   }
   advanceTurn(lobby);
-  return { correct, roundsUsed: currentPlayer.roundCount };
+  const placement = correct ? lobby.players.filter(p => p.hasWon).length : null;
+  return { correct, roundsUsed: currentPlayer.roundCount, placement };
+}
+
+function skipTurn(lobby, playerId) {
+  if (lobby.phase !== 'guessing') throw new Error('Not in guessing phase');
+  const currentIdx = lobby.order[lobby.currentTurnIndex];
+  const currentPlayer = lobby.players[currentIdx];
+  if (currentPlayer.id !== playerId) throw new Error('Not your turn');
+  advanceTurn(lobby);
 }
 
 function advanceTurn(lobby) {
@@ -91,6 +124,7 @@ function advanceTurn(lobby) {
     steps++;
   }
   lobby.currentTurnIndex = next;
+  lobby.turnStartedAt = Date.now();
   if (lobby.players.every(p => p.hasWon)) lobby.phase = 'finished';
 }
 
@@ -109,6 +143,7 @@ function toClient(lobby, forPlayerId) {
     id: lobby.id,
     name: lobby.name,
     phase: lobby.phase,
+    turnStartedAt: lobby.turnStartedAt ?? null,
     players: lobby.players.map(p => ({
       id: p.id,
       name: p.name,
@@ -116,6 +151,7 @@ function toClient(lobby, forPlayerId) {
       roundsToWin: p.roundsToWin,
       isYou: p.id === forPlayerId,
       isCurrentTurn: currentPlayer && p.id === currentPlayer.id,
+      word: p.id !== forPlayerId ? (p.assignedWord ?? null) : undefined,
     })),
     currentTurnPlayerId: currentPlayer?.id ?? null,
     myNotes: me?.notes ?? '',
@@ -131,8 +167,25 @@ function toClient(lobby, forPlayerId) {
     })(),
     canStart: lobby.phase === 'waiting' && lobby.players.length >= 2 && lobby.creatorId === forPlayerId,
     allAssignmentsIn: lobby.phase === 'assigning' && Object.keys(lobby.assignments).length === lobby.players.length,
+    isHost: lobby.creatorId === forPlayerId,
   };
 }
 
 
-export { getLobby, createLobby, joinLobby, startGame, submitAssignment, submitGuess, updateNotes };
+function returnToLobby(lobby, playerId) {
+  if (lobby.phase !== 'finished') throw new Error('Game is not finished');
+  if (lobby.creatorId !== playerId) throw new Error('Only the host can return to lobby');
+  lobby.phase = 'waiting';
+  lobby.order = [];
+  lobby.assignments = {};
+  lobby.currentTurnIndex = 0;
+  lobby.players.forEach(p => {
+    p.assignedWord = null;
+    p.hasWon = false;
+    p.roundsToWin = null;
+    p.notes = '';
+    p.roundCount = 0;
+  });
+}
+
+export { getLobby, createLobby, joinLobby, reorderPlayers, randomizeOrder, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby };
