@@ -226,13 +226,18 @@ function renderLobby() {
       ` : ''}
       ${isHost ? '<p class="subtitle" style="margin-bottom:0.5rem; font-size:0.85rem;">Order = who assigns for whom (first assigns for second, etc). Drag to reorder.</p>' : ''}
       <ul class="players-list ${isHost ? 'players-list-draggable' : ''}" id="waiting-players-list">
-        ${(state.players || []).map((p, idx) => `
+        ${(state.players || []).map((p, idx) => {
+          const n = state.players.length;
+          const nextPlayer = n >= 2 ? state.players[(idx + 1) % n] : null;
+          const targetLabel = nextPlayer ? `Word for ${escapeHtml(nextPlayer.name)}` : '';
+          return `
           <li class="${p.isYou ? 'is-you' : ''} ${isHost ? 'draggable' : ''}" data-player-id="${escapeHtml(p.id)}" ${isHost ? 'draggable="true"' : ''}>
             ${isHost ? '<span class="drag-handle" aria-hidden="true">⋮⋮</span>' : ''}
             <span>${escapeHtml(p.name)} ${p.isYou ? ' (you)' : ''}</span>
+            ${targetLabel ? `<span class="player-target">${targetLabel}</span>` : ''}
             <span class="ready-badge ${p.ready ? 'ready' : ''}">${p.ready ? '✓ Ready' : 'Not ready'}</span>
           </li>
-        `).join('')}
+        `; }).join('')}
       </ul>
       ${isHost ? '<div class="lobby-order-actions"><button class="btn btn-secondary" id="btn-random-order">Random order</button></div>' : ''}
       ${state.canStart ? '<button class="btn" id="btn-start">Start game</button>' : allReady ? '<p class="subtitle">Waiting for host to start.</p>' : '<p class="subtitle">Everyone must ready up before the host can start.</p>'}
@@ -453,12 +458,13 @@ function renderGameLayout(opts) {
   const wrongGuessesList = (currentTurnWrongGuesses && currentTurnWrongGuesses.length)
     ? currentTurnWrongGuesses.map(w => `${escapeHtml(w.playerName)}: "${escapeHtml(w.guess)}"`).join(' • ')
     : (lastWrongGuess ? `${escapeHtml(lastWrongGuess.playerName)} guessed "${escapeHtml(lastWrongGuess.guess)}" — wrong!` : '');
-  const guessHistoryHtml = (guessHistory && guessHistory.length)
-    ? guessHistory.map(entry => {
-        if (entry.skipped) return `<li class="guess-history-item skipped">${escapeHtml(entry.playerName)} skipped</li>`;
+  const guessHistoryFiltered = (guessHistory || []).filter(e => !e.skipped);
+  const guessHistoryHtml = guessHistoryFiltered.length
+    ? guessHistoryFiltered.map(entry => {
+        const roundLabel = entry.round != null ? `Round ${entry.round} — ` : '';
         const mark = entry.correct ? ' ✓' : ' ✗';
         const guess = entry.guess != null ? ` "${escapeHtml(entry.guess)}"` : '';
-        return `<li class="guess-history-item ${entry.correct ? 'correct' : 'wrong'}">${escapeHtml(entry.playerName)}:${guess}${mark}</li>`;
+        return `<li class="guess-history-item ${entry.correct ? 'correct' : 'wrong'}">${roundLabel}${escapeHtml(entry.playerName)}:${guess}${mark}</li>`;
       }).join('')
     : '';
   const playerDots = orderedPlayers.map((p, i) => {

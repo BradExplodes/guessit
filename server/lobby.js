@@ -131,7 +131,7 @@ function submitGuess(lobby, playerId, guess) {
   const correct = currentPlayer.assignedWord && currentPlayer.assignedWord.toLowerCase() === String(guess).trim().toLowerCase();
   const guessStr = String(guess).trim();
   if (!lobby.guessHistory) lobby.guessHistory = [];
-  lobby.guessHistory.push({ playerName: currentPlayer.name, guess: guessStr, correct });
+  lobby.guessHistory.push({ playerName: currentPlayer.name, guess: guessStr, correct, round: currentPlayer.roundCount });
   if (correct) {
     currentPlayer.hasWon = true;
     currentPlayer.roundsToWin = currentPlayer.roundCount;
