@@ -1,4 +1,4 @@
-# Who Am I? — Online Party Game
+# Guess It! — Online Party Game
 
 Play the classic "post-it on your forehead" game online. Each player is assigned a name (celebrity, character, etc.) by the person next to them. Take turns guessing your word; when you get it right, you win. Use Discord (or any voice chat) to ask each other questions — this app only manages the game and your notes.
 
@@ -9,8 +9,8 @@ npm install
 npm run dev
 ```
 
-- **App:** http://localhost:5173 (or http://YOUR_IP:5173 for other devices on your network)  
-- **API:** http://localhost:3001  
+- **Local:** App at http://localhost:5173, API at http://localhost:3001  
+- **Deployed (e.g. Render):** One URL for the whole app — share it so everyone opens the same game.
 
 ## Multiplayer (important)
 

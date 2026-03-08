@@ -1,7 +1,7 @@
 {
   "name": "guessit",
   "version": "1.0.0",
-  "description": "Online Who Am I? party game",
+  "description": "Guess It! — online party game",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",

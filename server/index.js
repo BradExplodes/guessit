@@ -5,7 +5,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { createLobby, joinLobby, getLobby, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby, reorderPlayers, randomizeOrder, setWordForNext, setReady } from './lobby.js';
+import { createLobby, joinLobby, getLobby, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby, reorderPlayers, randomizeOrder, setWordForNext, setReady, getJoinToken, redeemJoinToken } from './lobby.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
@@ -57,6 +57,32 @@ app.get('/api/lobby/:lobbyId', (req, res) => {
   if (!lobby) return res.status(404).json({ error: 'Lobby not found' });
   const playerId = req.query.playerId || null;
   return res.json(lobby.toClient(playerId));
+});
+
+app.get('/api/lobby/:lobbyId/join-link', (req, res) => {
+  const lobby = getLobby(req.params.lobbyId);
+  if (!lobby) return res.status(404).json({ error: 'Lobby not found' });
+  const playerId = req.query.playerId;
+  if (!playerId) return res.status(400).json({ error: 'playerId required' });
+  try {
+    const joinToken = getJoinToken(lobby, playerId);
+    return res.json({ joinToken });
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/lobby/join-by-token', (req, res) => {
+  const { joinToken, playerName } = req.body;
+  if (!joinToken || !playerName || !String(playerName).trim()) {
+    return res.status(400).json({ error: 'Join token and player name required' });
+  }
+  try {
+    const { lobby, player } = redeemJoinToken(joinToken, String(playerName).trim());
+    return res.json({ lobbyId: lobby.id, playerId: player.id, lobbyName: lobby.name });
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
 });
 
 // --- Serve frontend when dist exists (e.g. single Render deployment) ---

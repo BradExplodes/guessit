@@ -9,6 +9,7 @@ let playerId = null;
 let hostPassword = null;
 let turnCountdownIntervalId = null;
 let gameNotesLocal = null;
+let pendingJoinToken = null;
 
 function getEl(id) {
   return document.getElementById(id);
@@ -18,6 +19,18 @@ function render() {
   const app = getEl('app');
   if (!app) return;
 
+  const hashMatch = location.hash.slice(1).match(/^t=([^&]+)/);
+  if (hashMatch) {
+    pendingJoinToken = decodeURIComponent(hashMatch[1]);
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
+    if (socket) socket.disconnect();
+    socket = null;
+    state = null;
+    lobbyId = null;
+    playerId = null;
+    localStorage.removeItem('guessit_lobbyId');
+    localStorage.removeItem('guessit_playerId');
+  }
   if (!lobbyId || !playerId) {
     app.innerHTML = renderHome();
     bindHome();
@@ -45,8 +58,22 @@ function render() {
 }
 
 function renderHome() {
+  if (pendingJoinToken) {
+    return `
+    <h1>Guess It!</h1>
+    <p class="subtitle">You opened an invite link. Enter your name to join the lobby.</p>
+    <div class="card">
+      <h2 style="margin:0 0 1rem; font-size:1.1rem;">Join with invite link</h2>
+      <div id="join-by-token-error" class="error" style="display:none;"></div>
+      <label>Your name</label>
+      <input type="text" id="join-by-token-player" placeholder="Your display name" autofocus />
+      <button class="btn" id="btn-join-by-token">Join lobby</button>
+      <p class="subtitle" style="margin-top:0.75rem; font-size:0.85rem;"><a href="${escapeHtml(location.pathname + location.search)}" id="join-with-name-link">Join with lobby name &amp; password instead</a></p>
+    </div>
+  `;
+  }
   return `
-    <h1>Who Am I?</h1>
+    <h1>Guess It!</h1>
     <p class="subtitle">Create or join a lobby to play. Use Discord to ask each other questions!</p>
     <div class="card">
       <h2 style="margin:0 0 1rem; font-size:1.1rem;">Create lobby</h2>
@@ -107,6 +134,49 @@ function bindHome() {
     }
   });
 
+  getEl('btn-join-by-token')?.addEventListener('click', async () => {
+    const playerName = getEl('join-by-token-player')?.value?.trim();
+    const errEl = getEl('join-by-token-error');
+    errEl.style.display = 'none';
+    if (!playerName) {
+      errEl.textContent = 'Enter your name';
+      errEl.style.display = 'block';
+      return;
+    }
+    if (!pendingJoinToken) {
+      errEl.textContent = 'Invite link expired. Use lobby name & password to join.';
+      errEl.style.display = 'block';
+      return;
+    }
+    try {
+      const res = await fetch(`${API}/lobby/join-by-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ joinToken: pendingJoinToken, playerName }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Join failed');
+      pendingJoinToken = null;
+      lobbyId = data.lobbyId;
+      playerId = data.playerId;
+      localStorage.setItem('guessit_lobbyId', lobbyId);
+      localStorage.setItem('guessit_playerId', playerId);
+      connectSocket();
+      fetchState();
+    } catch (e) {
+      errEl.textContent = e.message || 'Join failed';
+      errEl.style.display = 'block';
+    }
+  });
+  getEl('join-by-token-player')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') getEl('btn-join-by-token')?.click();
+  });
+  getEl('join-with-name-link')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    pendingJoinToken = null;
+    render();
+  });
+
   getEl('btn-join')?.addEventListener('click', async () => {
     const lobbyName = getEl('join-name')?.value?.trim();
     const password = getEl('join-password')?.value;
@@ -135,7 +205,7 @@ function bindHome() {
     } catch (e) {
       const isNetworkError = e.name === 'TypeError' && (e.message === 'Failed to fetch' || e.message.includes('fetch'));
       errEl.textContent = isNetworkError
-        ? "Can't reach the server. Open the exact game link the host shared (same URL in your browser). If on another device, use the host's Network URL (e.g. http://192.168.x.x:5173)."
+        ? "Can't reach the server. Open the exact game link the host shared (the same URL everyone uses to play)."
         : e.message;
       errEl.style.display = 'block';
     }
@@ -244,8 +314,9 @@ function renderLobby() {
       </ul>
       ${isHost ? '<div class="lobby-order-actions"><button class="btn btn-secondary" id="btn-random-order">Random order</button></div>' : ''}
       ${state.canStart ? '<button class="btn" id="btn-start">Start game</button>' : allReady ? '<p class="subtitle">Waiting for host to start.</p>' : '<p class="subtitle">Everyone must ready up before the host can start.</p>'}
-      <p class="subtitle" style="margin-top:1rem; font-size:0.85rem;"><strong>Multiplayer:</strong> Everyone must open the same game link. Copy the link below and share it. If friends are on other devices, open this page via your network URL (e.g. http://192.168.1.x:5173) first, then copy that link.</p>
+      <p class="subtitle" style="margin-top:1rem; font-size:0.85rem;"><strong>Multiplayer:</strong> Everyone must open the same game link. Share an invite link so friends can join with one click (they only enter their name).</p>
       <button class="btn btn-secondary" id="btn-copy-link">Copy game link</button>
+      <button class="btn btn-secondary" id="btn-copy-join-link">Copy invite link</button>
       ${state.canStart && hostPassword ? ` <button class="btn btn-secondary" id="btn-copy-invite">Copy lobby name &amp; password</button>` : ''}
     `;
   } else if (phase === 'assigning') {
@@ -307,7 +378,7 @@ function renderLobby() {
     return main;
   }
   return `
-    <h1>Who Am I?</h1>
+    <h1>Guess It!</h1>
     <div class="card">
       ${main}
     </div>
@@ -389,8 +460,21 @@ function bindLobby() {
     socket?.emit('start-game', { lobbyId, playerId });
   });
   getEl('btn-copy-link')?.addEventListener('click', () => {
-    const url = window.location.href;
+    const url = window.location.origin + window.location.pathname + window.location.search;
     navigator.clipboard.writeText(url).then(() => alert('Game link copied! Share this URL so others open the same game.'), () => alert('Could not copy'));
+  });
+  getEl('btn-copy-join-link')?.addEventListener('click', async () => {
+    try {
+      const res = await fetch(`${API}/lobby/${encodeURIComponent(lobbyId)}/join-link?playerId=${encodeURIComponent(playerId)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to get invite link');
+      const base = window.location.origin + window.location.pathname + (window.location.search || '');
+      const joinUrl = base + '#t=' + encodeURIComponent(data.joinToken);
+      await navigator.clipboard.writeText(joinUrl);
+      alert('Invite link copied! Anyone who opens this link only needs to enter their name to join.');
+    } catch (e) {
+      alert(e.message || 'Could not copy invite link');
+    }
   });
   getEl('btn-copy-invite')?.addEventListener('click', () => {
     const text = `Lobby: ${state.name}\nPassword: ${hostPassword || '(set when creating)'}`;

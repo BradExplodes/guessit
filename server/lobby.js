@@ -261,4 +261,26 @@ function returnToLobby(lobby, playerId) {
   lobby.guessHistory = [];
 }
 
-export { getLobby, createLobby, joinLobby, reorderPlayers, randomizeOrder, setWordForNext, setReady, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby };
+function getJoinToken(lobby, playerId) {
+  const player = lobby.players.find(p => p.id === playerId);
+  if (!player) throw new Error('Player not found');
+  const payload = JSON.stringify({ lobbyId: lobby.id, lobbyName: lobby.name, password: lobby.password });
+  return Buffer.from(payload, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function redeemJoinToken(token, playerName) {
+  try {
+    let b64 = token.replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const payload = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+    const { lobbyName, password } = payload;
+    if (!lobbyName || !password) throw new Error('Invalid token');
+    return joinLobby(lobbyName, password, playerName);
+  } catch (e) {
+    const known = ['Lobby not found', 'Wrong password', 'Game already started', 'Name already taken'];
+    if (e.message && known.some(k => e.message === k)) throw e;
+    throw new Error('Invalid or expired join link. Ask the host for a new link.');
+  }
+}
+
+export { getLobby, createLobby, joinLobby, reorderPlayers, randomizeOrder, setWordForNext, setReady, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby, getJoinToken, redeemJoinToken };

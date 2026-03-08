@@ -1,4 +1,4 @@
-# Hosting “Who Am I?”
+# Hosting “Guess It!”
 
 **Easiest: use Render for everything** — one deployment, one URL. No env vars to wire up.
 
