@@ -295,11 +295,11 @@ textarea {
 
 .player-word-sticky {
   position: absolute;
-  top: -8px;
-  right: -8px;
-  min-width: 20ch;
-  max-width: 36ch;
-  padding: 0.35em 0.5em;
+  top: -12px;
+  left: 50%;
+  width: max-content;
+  max-width: 28ch;
+  padding: 0.35em 0.6em;
   font-size: 0.85rem;
   font-weight: 600;
   color: #1c1917;
@@ -307,7 +307,7 @@ textarea {
   border: 1px solid #eab308;
   border-radius: 3px;
   box-shadow: 1px 1px 3px rgba(0,0,0,0.2);
-  transform: rotate(8deg);
+  transform: translateX(-50%) rotate(-6deg);
   z-index: 1;
   line-height: 1.2;
   white-space: nowrap;
