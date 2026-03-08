@@ -23,6 +23,7 @@ function createLobby(name, password, playerName) {
     currentTurnIndex: 0,
     creatorId: player.id,
     lastWrongGuess: null,
+    currentTurnWrongGuesses: [],
     toClient(forPlayerId) { return toClient(this, forPlayerId); },
   };
   lobbies.set(id, lobby);
@@ -98,6 +99,7 @@ function startGame(lobby, playerId) {
   lobby.phase = 'guessing';
   lobby.currentTurnIndex = 0;
   lobby.turnStartedAt = Date.now();
+  lobby.currentTurnWrongGuesses = [];
 }
 
 function submitAssignment(lobby, playerId, word) {
@@ -130,8 +132,12 @@ function submitGuess(lobby, playerId, guess) {
     currentPlayer.hasWon = true;
     currentPlayer.roundsToWin = currentPlayer.roundCount;
     lobby.lastWrongGuess = null;
+    lobby.currentTurnWrongGuesses = [];
   } else {
-    lobby.lastWrongGuess = { playerName: currentPlayer.name, guess: String(guess).trim() };
+    const wrong = { playerName: currentPlayer.name, guess: String(guess).trim() };
+    lobby.lastWrongGuess = wrong;
+    lobby.currentTurnWrongGuesses = lobby.currentTurnWrongGuesses || [];
+    lobby.currentTurnWrongGuesses.push(wrong);
   }
   advanceTurn(lobby);
   const placement = correct ? lobby.players.filter(p => p.hasWon).length : null;
@@ -145,11 +151,13 @@ function skipTurn(lobby, playerId) {
   if (currentPlayer.id !== playerId) throw new Error('Not your turn');
   currentPlayer.roundCount += 1;
   lobby.lastWrongGuess = null;
+  lobby.currentTurnWrongGuesses = [];
   advanceTurn(lobby);
 }
 
 function advanceTurn(lobby) {
   lobby.lastWrongGuess = null;
+  lobby.currentTurnWrongGuesses = [];
   const total = lobby.players.length;
   let next = (lobby.currentTurnIndex + 1) % total;
   let steps = 0;
@@ -185,6 +193,7 @@ function toClient(lobby, forPlayerId) {
       ready: p.ready ?? false,
       hasWon: p.hasWon,
       roundsToWin: p.roundsToWin,
+      roundCount: p.roundCount ?? 0,
       isYou: p.id === forPlayerId,
       isCurrentTurn: currentPlayer && p.id === currentPlayer.id,
       word: p.id !== forPlayerId ? (p.assignedWord ?? null) : undefined,
@@ -220,6 +229,7 @@ function toClient(lobby, forPlayerId) {
     allAssignmentsIn: lobby.phase === 'assigning' && Object.keys(lobby.assignments).length === lobby.players.length,
     isHost: lobby.creatorId === forPlayerId,
     lastWrongGuess: lobby.lastWrongGuess ?? null,
+    currentTurnWrongGuesses: lobby.currentTurnWrongGuesses ?? [],
   };
 }
 
@@ -240,6 +250,7 @@ function returnToLobby(lobby, playerId) {
     p.ready = false;
   });
   lobby.lastWrongGuess = null;
+  lobby.currentTurnWrongGuesses = [];
 }
 
 export { getLobby, createLobby, joinLobby, reorderPlayers, randomizeOrder, setWordForNext, setReady, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby };

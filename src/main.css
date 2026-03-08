@@ -291,6 +291,28 @@ textarea {
   margin-top: 0.1rem;
 }
 
+.player-word-sticky {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 2.5em;
+  max-width: 4.5em;
+  padding: 0.2em 0.35em;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: #1c1917;
+  background: #fef08a;
+  border: 1px solid #eab308;
+  border-radius: 2px;
+  box-shadow: 1px 1px 3px rgba(0,0,0,0.2);
+  transform: rotate(8deg);
+  z-index: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
 .game-info-panel {
   flex: 0 0 auto;
 }

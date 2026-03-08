@@ -273,6 +273,7 @@ function renderLobby() {
       phase,
       turnSecondsLeft,
       lastWrongGuess: state.lastWrongGuess,
+      currentTurnWrongGuesses: state.currentTurnWrongGuesses || [],
       myAssignedWord: state.myAssignedWord,
       isMyTurn,
       isHost: state.isHost,
@@ -439,6 +440,7 @@ function renderGameLayout(opts) {
     phase,
     turnSecondsLeft,
     lastWrongGuess,
+    currentTurnWrongGuesses,
     myAssignedWord,
     isMyTurn,
     isHost,
@@ -448,6 +450,9 @@ function renderGameLayout(opts) {
   const n = orderedPlayers.length;
   const radius = 38;
   const dotHalf = 44;
+  const wrongGuessesList = (currentTurnWrongGuesses && currentTurnWrongGuesses.length)
+    ? currentTurnWrongGuesses.map(w => `${escapeHtml(w.playerName)}: "${escapeHtml(w.guess)}"`).join(' • ')
+    : (lastWrongGuess ? `${escapeHtml(lastWrongGuess.playerName)} guessed "${escapeHtml(lastWrongGuess.guess)}" — wrong!` : '');
   const playerDots = orderedPlayers.map((p, i) => {
     const angleDeg = n ? (i / n) * 360 : 0;
     const angleRad = (angleDeg - 90) * (Math.PI / 180);
@@ -456,8 +461,10 @@ function renderGameLayout(opts) {
     const active = p.isCurrentTurn;
     const place = placements.get(p.id);
     const label = p.name.length > 10 ? p.name.slice(0, 9) + '…' : p.name;
+    const wordSticky = !p.isYou && p.word ? `<span class="player-word-sticky" title="${escapeHtml(p.word)}">${escapeHtml(p.word.length > 8 ? p.word.slice(0, 7) + '…' : p.word)}</span>` : '';
     return `
       <div class="player-dot ${active ? 'active' : 'inactive'} ${p.isYou ? 'you' : ''}" style="left:${left}%;top:${top}%;margin-left:-${dotHalf}px;margin-top:-${dotHalf}px;" title="${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}">
+        ${wordSticky}
         ${label}
         ${p.hasWon && place != null ? `<span class="badge badge-won">${ordinal(place)}</span>` : ''}
       </div>
@@ -497,7 +504,7 @@ function renderGameLayout(opts) {
           <h3>Game info</h3>
           <p class="lobby-name-display" style="margin-bottom:0.5rem;">Lobby: <strong>${escapeHtml((opts.lobbyName || ''))}</strong></p>
           ${turnSecondsLeft != null ? `<p class="turn-timer">Time left: <strong id="turn-countdown">${turnSecondsLeft}</strong>s</p>` : ''}
-          ${lastWrongGuess ? `<p class="wrong-guess-msg">${escapeHtml(lastWrongGuess.playerName)} guessed "${escapeHtml(lastWrongGuess.guess)}" — wrong!</p>` : ''}
+          ${wrongGuessesList ? `<p class="wrong-guess-msg">Wrong: ${wrongGuessesList}</p>` : ''}
           ${myAssignedWord ? `<p class="subtitle" style="margin-bottom:0.5rem;">Your word was: <strong>${escapeHtml(myAssignedWord)}</strong></p>` : ''}
           ${phase === 'finished' && isHost ? `<button class="btn" id="btn-return-lobby">Return to lobby</button>` : ''}
         </div>
