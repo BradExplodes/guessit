@@ -8,6 +8,7 @@ let lobbyId = null;
 let playerId = null;
 let hostPassword = null;
 let turnCountdownIntervalId = null;
+let lastCountdownSecs = -1;
 let gameNotesLocal = null;
 let pendingJoinToken = null;
 
@@ -393,6 +394,7 @@ function bindLobby() {
   }
   const countdownEl = getEl('turn-countdown');
   if (countdownEl && state?.turnStartedAt && state?.phase === 'guessing') {
+    lastCountdownSecs = -1;
     turnCountdownIntervalId = setInterval(() => {
       const el = getEl('turn-countdown');
       if (!el) {
@@ -402,6 +404,12 @@ function bindLobby() {
       }
       const secs = Math.max(0, 60 - Math.floor((Date.now() - state.turnStartedAt) / 1000));
       el.textContent = secs;
+      if (secs === 0 && lastCountdownSecs !== 0 && state?.currentTurnPlayerId === playerId) {
+        lastCountdownSecs = 0;
+        socket?.emit('skip-turn', { lobbyId, playerId });
+      } else {
+        lastCountdownSecs = secs;
+      }
     }, 1000);
   }
   const listEl = getEl('waiting-players-list');
@@ -635,9 +643,23 @@ function getPlacements(players) {
   return map;
 }
 
+function initDarkMode() {
+  const stored = localStorage.getItem('guessit_theme');
+  const prefersDark = typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches;
+  const theme = stored === 'dark' || stored === 'light' ? stored : (prefersDark ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme', theme);
+  if (!stored) localStorage.setItem('guessit_theme', theme);
+  getEl('dark-mode-toggle')?.addEventListener('click', () => {
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('guessit_theme', next);
+  });
+}
+
 const params = new URLSearchParams(location.search);
 lobbyId = params.get('lobby') || localStorage.getItem('guessit_lobbyId');
 playerId = params.get('player') || localStorage.getItem('guessit_playerId');
+initDarkMode();
 if (lobbyId && playerId) {
   connectSocket();
   fetchState();

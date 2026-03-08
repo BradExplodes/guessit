@@ -137,8 +137,10 @@ io.on('connection', (socket) => {
       try {
         skipTurn(lobby, currentPlayer.id);
         await broadcastLobbyState(lobbyId);
-        setLobbyTurnTimer(lobbyId);
-      } catch (_) {}
+      } catch (_) {
+        // Turn may have already advanced (e.g. player guessed); ensure next turn still has a timer
+      }
+      setLobbyTurnTimer(lobbyId);
     }, TURN_SECONDS * 1000);
     lobbyTurnTimers.set(lobbyId, { timeoutId });
   }
@@ -190,7 +192,7 @@ io.on('connection', (socket) => {
       await broadcastLobbyState(lobbyId);
       setLobbyTurnTimer(lobbyId);
     } catch (e) {
-      socket.emit('error', { message: e.message });
+      if (e.message !== 'Not your turn') socket.emit('error', { message: e.message });
     }
   });
 

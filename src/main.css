@@ -17,6 +17,24 @@
   --font: 'Outfit', system-ui, sans-serif;
 }
 
+[data-theme="dark"] {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --surface2: #334155;
+  --border: #475569;
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --accent: #3b82f6;
+  --accent-dim: #60a5fa;
+  --active: #f59e0b;
+  --success: #10b981;
+  --warning: #f59e0b;
+}
+
+[data-theme="dark"] .card {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -94,6 +112,57 @@ textarea:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+[data-theme="dark"] input:focus,
+[data-theme="dark"] textarea:focus {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
+}
+
+.dark-mode-toggle {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 100;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.dark-mode-toggle:hover {
+  background: var(--surface2);
+}
+
+.dark-mode-icon {
+  position: absolute;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.dark-mode-icon.light-icon {
+  opacity: 1;
+}
+
+.dark-mode-icon.dark-icon {
+  opacity: 0;
+}
+
+[data-theme="dark"] .dark-mode-icon.light-icon {
+  opacity: 0;
+}
+
+[data-theme="dark"] .dark-mode-icon.dark-icon {
+  opacity: 1;
 }
 
 textarea {
