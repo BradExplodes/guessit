@@ -199,6 +199,42 @@ textarea {
   margin-bottom: 1rem;
 }
 
+.character-section {
+  margin-bottom: 1rem;
+}
+
+.character-section label {
+  margin-bottom: 0.25rem;
+}
+
+.character-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.character-row input {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.ready-badge {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.ready-badge.ready {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.wrong-guess-msg {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin: -0.25rem 0 0.75rem;
+  font-style: italic;
+}
+
 .badge {
   font-size: 0.7rem;
   font-weight: 600;

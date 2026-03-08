@@ -11,7 +11,7 @@ function createLobby(name, password, playerName) {
   const exists = [...lobbies.values()].some(l => l.name.toLowerCase() === trimmedName.toLowerCase());
   if (exists) throw new Error('A lobby with this name already exists. Pick another name.');
   const id = nanoid(8);
-  const player = { id: nanoid(8), name: playerName, assignedWord: null, hasWon: false, roundsToWin: null, notes: '', roundCount: 0 };
+  const player = { id: nanoid(8), name: playerName, character: '', ready: false, assignedWord: null, hasWon: false, roundsToWin: null, notes: '', roundCount: 0 };
   const lobby = {
     id,
     name: trimmedName,
@@ -22,6 +22,7 @@ function createLobby(name, password, playerName) {
     assignments: {},
     currentTurnIndex: 0,
     creatorId: player.id,
+    lastWrongGuess: null,
     toClient(forPlayerId) { return toClient(this, forPlayerId); },
   };
   lobbies.set(id, lobby);
@@ -35,9 +36,23 @@ function joinLobby(lobbyName, password, playerName) {
   if (lobby.password !== password) throw new Error('Wrong password');
   if (lobby.phase !== 'waiting') throw new Error('Game already started');
   if (lobby.players.some(p => p.name.toLowerCase() === playerName.trim().toLowerCase())) throw new Error('Name already taken');
-  const player = { id: nanoid(8), name: playerName.trim(), assignedWord: null, hasWon: false, roundsToWin: null, notes: '', roundCount: 0 };
+  const player = { id: nanoid(8), name: playerName.trim(), character: '', ready: false, assignedWord: null, hasWon: false, roundsToWin: null, notes: '', roundCount: 0 };
   lobby.players.push(player);
   return { lobby, player };
+}
+
+function setCharacter(lobby, playerId, character) {
+  if (lobby.phase !== 'waiting') throw new Error('Can only set character in lobby');
+  const player = lobby.players.find(p => p.id === playerId);
+  if (!player) throw new Error('Player not found');
+  player.character = String(character ?? '').trim();
+}
+
+function setReady(lobby, playerId, ready) {
+  if (lobby.phase !== 'waiting') throw new Error('Can only ready up in lobby');
+  const player = lobby.players.find(p => p.id === playerId);
+  if (!player) throw new Error('Player not found');
+  player.ready = !!ready;
 }
 
 function reorderPlayers(lobby, playerId, playerIds) {
@@ -66,6 +81,7 @@ function randomizeOrder(lobby, playerId) {
 function startGame(lobby, playerId) {
   if (lobby.phase !== 'waiting') throw new Error('Game already started');
   if (lobby.players.length < 2) throw new Error('Need at least 2 players');
+  if (!lobby.players.every(p => p.ready)) throw new Error('Everyone must be ready before starting');
   if (lobby.creatorId !== playerId) throw new Error('Only the host can start the game');
   lobby.phase = 'assigning';
   lobby.order = lobby.players.map((_, i) => i);
@@ -101,6 +117,9 @@ function submitGuess(lobby, playerId, guess) {
   if (correct) {
     currentPlayer.hasWon = true;
     currentPlayer.roundsToWin = currentPlayer.roundCount;
+    lobby.lastWrongGuess = null;
+  } else {
+    lobby.lastWrongGuess = { playerName: currentPlayer.character || currentPlayer.name, guess: String(guess).trim() };
   }
   advanceTurn(lobby);
   const placement = correct ? lobby.players.filter(p => p.hasWon).length : null;
@@ -112,10 +131,13 @@ function skipTurn(lobby, playerId) {
   const currentIdx = lobby.order[lobby.currentTurnIndex];
   const currentPlayer = lobby.players[currentIdx];
   if (currentPlayer.id !== playerId) throw new Error('Not your turn');
+  currentPlayer.roundCount += 1;
+  lobby.lastWrongGuess = null;
   advanceTurn(lobby);
 }
 
 function advanceTurn(lobby) {
+  lobby.lastWrongGuess = null;
   const total = lobby.players.length;
   let next = (lobby.currentTurnIndex + 1) % total;
   let steps = 0;
@@ -147,6 +169,8 @@ function toClient(lobby, forPlayerId) {
     players: lobby.players.map(p => ({
       id: p.id,
       name: p.name,
+      character: p.character ?? '',
+      ready: p.ready ?? false,
       hasWon: p.hasWon,
       roundsToWin: p.roundsToWin,
       isYou: p.id === forPlayerId,
@@ -163,11 +187,12 @@ function toClient(lobby, forPlayerId) {
       const nextIdx = (idx + 1) % lobby.players.length;
       const next = lobby.players[nextIdx];
       const alreadySubmitted = lobby.assignments[next.id];
-      return alreadySubmitted ? null : { playerId: next.id, playerName: next.name };
+      return alreadySubmitted ? null : { playerId: next.id, playerName: next.character || next.name };
     })(),
-    canStart: lobby.phase === 'waiting' && lobby.players.length >= 2 && lobby.creatorId === forPlayerId,
+    canStart: lobby.phase === 'waiting' && lobby.players.length >= 2 && lobby.players.every(p => p.ready) && lobby.creatorId === forPlayerId,
     allAssignmentsIn: lobby.phase === 'assigning' && Object.keys(lobby.assignments).length === lobby.players.length,
     isHost: lobby.creatorId === forPlayerId,
+    lastWrongGuess: lobby.lastWrongGuess ?? null,
   };
 }
 
@@ -185,7 +210,9 @@ function returnToLobby(lobby, playerId) {
     p.roundsToWin = null;
     p.notes = '';
     p.roundCount = 0;
+    p.ready = false;
   });
+  lobby.lastWrongGuess = null;
 }
 
-export { getLobby, createLobby, joinLobby, reorderPlayers, randomizeOrder, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby };
+export { getLobby, createLobby, joinLobby, reorderPlayers, randomizeOrder, setCharacter, setReady, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby };

@@ -5,7 +5,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { createLobby, joinLobby, getLobby, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby, reorderPlayers, randomizeOrder } from './lobby.js';
+import { createLobby, joinLobby, getLobby, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby, reorderPlayers, randomizeOrder, setCharacter, setReady } from './lobby.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
@@ -195,6 +195,28 @@ io.on('connection', (socket) => {
     if (!lobby) return socket.emit('error', { message: 'Lobby not found' });
     try {
       randomizeOrder(lobby, playerId);
+      await broadcastLobbyState(lobbyId);
+    } catch (e) {
+      socket.emit('error', { message: e.message });
+    }
+  });
+
+  socket.on('set-character', async ({ lobbyId, playerId, character }) => {
+    const lobby = getLobby(lobbyId);
+    if (!lobby) return socket.emit('error', { message: 'Lobby not found' });
+    try {
+      setCharacter(lobby, playerId, character);
+      await broadcastLobbyState(lobbyId);
+    } catch (e) {
+      socket.emit('error', { message: e.message });
+    }
+  });
+
+  socket.on('set-ready', async ({ lobbyId, playerId, ready }) => {
+    const lobby = getLobby(lobbyId);
+    if (!lobby) return socket.emit('error', { message: 'Lobby not found' });
+    try {
+      setReady(lobby, playerId, ready);
       await broadcastLobbyState(lobbyId);
     } catch (e) {
       socket.emit('error', { message: e.message });

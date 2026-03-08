@@ -176,24 +176,36 @@ async function fetchState() {
 function renderLobby() {
   const phase = state.phase;
   const me = state.players?.find(p => p.isYou);
-  const currentName = state.players?.find(p => p.id === state.currentTurnPlayerId)?.name;
 
   let main = '';
   if (phase === 'waiting') {
     const isHost = state.isHost;
+    const allReady = (state.players || []).every(p => p.ready);
+    const me = state.players?.find(p => p.isYou);
     main = `
       <p class="lobby-name-display">Lobby: <strong>${escapeHtml(state.name)}</strong></p>
+      ${me ? `
+      <div class="character-section card">
+        <label>Your character</label>
+        <p class="subtitle" style="margin:0 0 0.5rem; font-size:0.85rem;">Who are you playing as? (e.g. a celebrity or character name)</p>
+        <div class="character-row">
+          <input type="text" id="character-input" placeholder="e.g. Einstein" value="${escapeHtml(me.character || '')}" />
+          <button class="btn ${me.ready ? 'btn-secondary' : ''}" id="btn-ready">${me.ready ? 'Unready' : 'Ready'}</button>
+        </div>
+      </div>
+      ` : ''}
       ${isHost ? '<p class="subtitle" style="margin-bottom:0.5rem; font-size:0.85rem;">Order = who assigns for whom (first assigns for second, etc). Drag to reorder.</p>' : ''}
       <ul class="players-list ${isHost ? 'players-list-draggable' : ''}" id="waiting-players-list">
         ${(state.players || []).map((p, idx) => `
           <li class="${p.isYou ? 'is-you' : ''} ${isHost ? 'draggable' : ''}" data-player-id="${escapeHtml(p.id)}" ${isHost ? 'draggable="true"' : ''}>
             ${isHost ? '<span class="drag-handle" aria-hidden="true">⋮⋮</span>' : ''}
-            <span>${escapeHtml(p.name)} ${p.isYou ? ' (you)' : ''}</span>
+            <span>${escapeHtml(p.character || p.name)} ${p.isYou ? ' (you)' : ''}</span>
+            <span class="ready-badge ${p.ready ? 'ready' : ''}">${p.ready ? '✓ Ready' : 'Not ready'}</span>
           </li>
         `).join('')}
       </ul>
       ${isHost ? '<div class="lobby-order-actions"><button class="btn btn-secondary" id="btn-random-order">Random order</button></div>' : ''}
-      ${state.canStart ? '<button class="btn" id="btn-start">Start game</button>' : '<p class="subtitle">Waiting for host to start (need at least 2 players).</p>'}
+      ${state.canStart ? '<button class="btn" id="btn-start">Start game</button>' : allReady ? '<p class="subtitle">Waiting for host to start.</p>' : '<p class="subtitle">Everyone must ready up before the host can start.</p>'}
       <p class="subtitle" style="margin-top:1rem; font-size:0.85rem;"><strong>Multiplayer:</strong> Everyone must open the same game link. Copy the link below and share it. If friends are on other devices, open this page via your network URL (e.g. http://192.168.1.x:5173) first, then copy that link.</p>
       <button class="btn btn-secondary" id="btn-copy-link">Copy game link</button>
       ${state.canStart && hostPassword ? ` <button class="btn btn-secondary" id="btn-copy-invite">Copy lobby name &amp; password</button>` : ''}
@@ -216,23 +228,26 @@ function renderLobby() {
   } else if (phase === 'guessing' || phase === 'finished') {
     const isMyTurn = me?.isCurrentTurn;
     const placements = getPlacements(state.players || []);
-    const turnSecondsLeft = state.turnStartedAt && phase === 'guessing' && isMyTurn
+    const turnSecondsLeft = state.turnStartedAt && phase === 'guessing'
       ? Math.max(0, 60 - Math.floor((Date.now() - state.turnStartedAt) / 1000))
       : null;
+    const currentPlayer = state.players?.find(p => p.id === state.currentTurnPlayerId);
+    const currentDisplayName = currentPlayer ? (currentPlayer.character || currentPlayer.name) : '';
     main = `
       <p class="lobby-name-display">Lobby: <strong>${escapeHtml(state.name)}</strong></p>
       ${phase === 'finished'
         ? '<div class="finished-banner">Everyone has guessed their word! Game over.</div>'
         : isMyTurn
           ? '<div class="turn-banner you">Your turn — guess the name on your forehead!</div>'
-          : `<div class="turn-banner">${escapeHtml(currentName || '')}’s turn</div>`}
+          : `<div class="turn-banner">${escapeHtml(currentDisplayName)}'s turn</div>`}
       ${turnSecondsLeft != null ? `<p class="turn-timer">Time left: <strong id="turn-countdown">${turnSecondsLeft}</strong>s</p>` : ''}
+      ${state.lastWrongGuess ? `<p class="wrong-guess-msg">${escapeHtml(state.lastWrongGuess.playerName)} guessed "${escapeHtml(state.lastWrongGuess.guess)}" — wrong!</p>` : ''}
       <ul class="players-list">
         ${(state.players || []).map(p => {
           const place = placements.get(p.id);
           return `
           <li class="${p.isYou ? 'is-you ' : ''}${p.isCurrentTurn ? 'is-turn' : ''}">
-            <span>${escapeHtml(p.name)} ${p.isYou ? ' (you)' : ''}</span>
+            <span>${escapeHtml(p.character || p.name)} ${p.isYou ? ' (you)' : ''}</span>
             <span>
               ${p.hasWon && place != null ? `<span class="badge badge-won">${ordinal(place)}</span> <span class="badge badge-rounds">${p.roundsToWin} round(s)</span>` : (p.isCurrentTurn ? '<span class="badge">Guessing…</span>' : '')}
             </span>
@@ -274,7 +289,7 @@ function bindLobby() {
     turnCountdownIntervalId = null;
   }
   const countdownEl = getEl('turn-countdown');
-  if (countdownEl && state?.turnStartedAt) {
+  if (countdownEl && state?.turnStartedAt && state?.phase === 'guessing') {
     turnCountdownIntervalId = setInterval(() => {
       const el = getEl('turn-countdown');
       if (!el) {
@@ -326,6 +341,21 @@ function bindLobby() {
       socket?.emit('reorder-players', { lobbyId, playerId, playerIds: without });
     });
   }
+  getEl('character-input')?.addEventListener('blur', () => {
+    const character = getEl('character-input')?.value?.trim() ?? '';
+    socket?.emit('set-character', { lobbyId, playerId, character });
+  });
+  getEl('btn-ready')?.addEventListener('click', () => {
+    const me = state?.players?.find(p => p.isYou);
+    if (!me) return;
+    if (me.ready) {
+      socket?.emit('set-ready', { lobbyId, playerId, ready: false });
+    } else {
+      const character = getEl('character-input')?.value?.trim() ?? '';
+      socket?.emit('set-character', { lobbyId, playerId, character });
+      socket?.emit('set-ready', { lobbyId, playerId, ready: true });
+    }
+  });
   getEl('btn-random-order')?.addEventListener('click', () => {
     socket?.emit('randomize-order', { lobbyId, playerId });
   });
