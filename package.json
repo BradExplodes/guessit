@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "node server/index.js",
-    "client": "vite --host",
-    "build": "vite build",
-    "preview": "vite preview"
+    "client": "npx vite --host",
+    "build": "npx vite build",
+    "preview": "npx vite preview"
   },
   "dependencies": {
     "cors": "^2.8.5",
