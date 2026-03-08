@@ -282,6 +282,7 @@ function renderLobby() {
       turnSecondsLeft,
       lastWrongGuess: state.lastWrongGuess,
       currentTurnWrongGuesses: state.currentTurnWrongGuesses || [],
+      guessHistory: state.guessHistory || [],
       myAssignedWord: state.myAssignedWord,
       isMyTurn,
       isHost: state.isHost,
@@ -439,6 +440,7 @@ function renderGameLayout(opts) {
     turnSecondsLeft,
     lastWrongGuess,
     currentTurnWrongGuesses,
+    guessHistory,
     myAssignedWord,
     isMyTurn,
     isHost,
@@ -446,11 +448,19 @@ function renderGameLayout(opts) {
     currentRound,
   } = opts;
   const n = orderedPlayers.length;
-  const radius = 36;
+  const radius = 42;
   const dotHalf = 58;
   const wrongGuessesList = (currentTurnWrongGuesses && currentTurnWrongGuesses.length)
     ? currentTurnWrongGuesses.map(w => `${escapeHtml(w.playerName)}: "${escapeHtml(w.guess)}"`).join(' • ')
     : (lastWrongGuess ? `${escapeHtml(lastWrongGuess.playerName)} guessed "${escapeHtml(lastWrongGuess.guess)}" — wrong!` : '');
+  const guessHistoryHtml = (guessHistory && guessHistory.length)
+    ? guessHistory.map(entry => {
+        if (entry.skipped) return `<li class="guess-history-item skipped">${escapeHtml(entry.playerName)} skipped</li>`;
+        const mark = entry.correct ? ' ✓' : ' ✗';
+        const guess = entry.guess != null ? ` "${escapeHtml(entry.guess)}"` : '';
+        return `<li class="guess-history-item ${entry.correct ? 'correct' : 'wrong'}">${escapeHtml(entry.playerName)}:${guess}${mark}</li>`;
+      }).join('')
+    : '';
   const playerDots = orderedPlayers.map((p, i) => {
     const angleDeg = n ? (i / n) * 360 : 0;
     const angleRad = (angleDeg - 90) * (Math.PI / 180);
@@ -503,8 +513,8 @@ function renderGameLayout(opts) {
           <p class="lobby-name-display" style="margin-bottom:0.5rem;">Lobby: <strong>${escapeHtml((opts.lobbyName || ''))}</strong></p>
           ${turnSecondsLeft != null ? `<p class="turn-timer">Time left: <strong id="turn-countdown">${turnSecondsLeft}</strong>s</p>` : ''}
           ${wrongGuessesList ? `<p class="wrong-guess-msg">Wrong: ${wrongGuessesList}</p>` : ''}
+          ${guessHistoryHtml ? `<div class="guess-history"><h4>Guess history</h4><ul class="guess-history-list">${guessHistoryHtml}</ul></div>` : ''}
           ${myAssignedWord ? `<p class="subtitle" style="margin-bottom:0.5rem;">Your word was: <strong>${escapeHtml(myAssignedWord)}</strong></p>` : ''}
-          ${phase === 'finished' && isHost ? `<button class="btn" id="btn-return-lobby">Return to lobby</button>` : ''}
         </div>
         <div class="notepad-panel card">
           <label>Your notes</label>
@@ -512,6 +522,7 @@ function renderGameLayout(opts) {
         </div>
         <div class="game-leave-row">
           <button class="btn btn-secondary" id="btn-leave">Leave lobby</button>
+          ${phase === 'finished' && isHost ? '<button class="btn" id="btn-return-lobby">Return to lobby</button>' : ''}
         </div>
       </div>
     </div>

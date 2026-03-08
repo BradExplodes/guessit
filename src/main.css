@@ -194,7 +194,8 @@ textarea {
   text-align: center;
   z-index: 2;
   width: 100%;
-  max-width: 280px;
+  max-width: 240px;
+  padding: 1.5rem 0;
 }
 
 .player-circle-center .turn-arrow {
@@ -324,6 +325,53 @@ textarea {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
+}
+
+.guess-history {
+  margin: 1rem 0 0.75rem;
+}
+
+.guess-history h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.guess-history-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.85rem;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.guess-history-item {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.guess-history-item.correct {
+  color: var(--success);
+}
+
+.guess-history-item.wrong {
+  color: var(--text-muted);
+}
+
+.guess-history-item.skipped {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.game-leave-row {
+  margin-top: auto;
+  padding-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .notepad-panel {

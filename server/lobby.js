@@ -100,6 +100,7 @@ function startGame(lobby, playerId) {
   lobby.currentTurnIndex = 0;
   lobby.turnStartedAt = Date.now();
   lobby.currentTurnWrongGuesses = [];
+  lobby.guessHistory = [];
 }
 
 function submitAssignment(lobby, playerId, word) {
@@ -128,13 +129,16 @@ function submitGuess(lobby, playerId, guess) {
   if (currentPlayer.id !== playerId) throw new Error('Not your turn');
   currentPlayer.roundCount += 1;
   const correct = currentPlayer.assignedWord && currentPlayer.assignedWord.toLowerCase() === String(guess).trim().toLowerCase();
+  const guessStr = String(guess).trim();
+  if (!lobby.guessHistory) lobby.guessHistory = [];
+  lobby.guessHistory.push({ playerName: currentPlayer.name, guess: guessStr, correct });
   if (correct) {
     currentPlayer.hasWon = true;
     currentPlayer.roundsToWin = currentPlayer.roundCount;
     lobby.lastWrongGuess = null;
     lobby.currentTurnWrongGuesses = [];
   } else {
-    const wrong = { playerName: currentPlayer.name, guess: String(guess).trim() };
+    const wrong = { playerName: currentPlayer.name, guess: guessStr };
     lobby.lastWrongGuess = wrong;
     lobby.currentTurnWrongGuesses = lobby.currentTurnWrongGuesses || [];
     lobby.currentTurnWrongGuesses.push(wrong);
@@ -150,6 +154,8 @@ function skipTurn(lobby, playerId) {
   const currentPlayer = lobby.players[currentIdx];
   if (currentPlayer.id !== playerId) throw new Error('Not your turn');
   currentPlayer.roundCount += 1;
+  if (!lobby.guessHistory) lobby.guessHistory = [];
+  lobby.guessHistory.push({ playerName: currentPlayer.name, guess: null, correct: false, skipped: true });
   lobby.lastWrongGuess = null;
   lobby.currentTurnWrongGuesses = [];
   advanceTurn(lobby);
@@ -230,6 +236,7 @@ function toClient(lobby, forPlayerId) {
     isHost: lobby.creatorId === forPlayerId,
     lastWrongGuess: lobby.lastWrongGuess ?? null,
     currentTurnWrongGuesses: lobby.currentTurnWrongGuesses ?? [],
+    guessHistory: lobby.guessHistory ?? [],
   };
 }
 
@@ -251,6 +258,7 @@ function returnToLobby(lobby, playerId) {
   });
   lobby.lastWrongGuess = null;
   lobby.currentTurnWrongGuesses = [];
+  lobby.guessHistory = [];
 }
 
 export { getLobby, createLobby, joinLobby, reorderPlayers, randomizeOrder, setWordForNext, setReady, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby };
