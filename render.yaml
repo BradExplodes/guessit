@@ -1,0 +1,11 @@
+# Single Render deployment: frontend + backend (API + WebSockets)
+# One URL for the whole app.
+services:
+  - type: web
+    name: guessit
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm run server
+    envVars:
+      - key: NODE_VERSION
+        value: 20
