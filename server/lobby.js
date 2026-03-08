@@ -11,7 +11,7 @@ function createLobby(name, password, playerName) {
   const exists = [...lobbies.values()].some(l => l.name.toLowerCase() === trimmedName.toLowerCase());
   if (exists) throw new Error('A lobby with this name already exists. Pick another name.');
   const id = nanoid(8);
-  const player = { id: nanoid(8), name: playerName, character: '', ready: false, assignedWord: null, hasWon: false, roundsToWin: null, notes: '', roundCount: 0 };
+  const player = { id: nanoid(8), name: playerName, wordForNext: '', ready: false, assignedWord: null, hasWon: false, roundsToWin: null, notes: '', roundCount: 0 };
   const lobby = {
     id,
     name: trimmedName,
@@ -36,16 +36,16 @@ function joinLobby(lobbyName, password, playerName) {
   if (lobby.password !== password) throw new Error('Wrong password');
   if (lobby.phase !== 'waiting') throw new Error('Game already started');
   if (lobby.players.some(p => p.name.toLowerCase() === playerName.trim().toLowerCase())) throw new Error('Name already taken');
-  const player = { id: nanoid(8), name: playerName.trim(), character: '', ready: false, assignedWord: null, hasWon: false, roundsToWin: null, notes: '', roundCount: 0 };
+  const player = { id: nanoid(8), name: playerName.trim(), wordForNext: '', ready: false, assignedWord: null, hasWon: false, roundsToWin: null, notes: '', roundCount: 0 };
   lobby.players.push(player);
   return { lobby, player };
 }
 
-function setCharacter(lobby, playerId, character) {
-  if (lobby.phase !== 'waiting') throw new Error('Can only set character in lobby');
+function setWordForNext(lobby, playerId, word) {
+  if (lobby.phase !== 'waiting') throw new Error('Can only set word in lobby');
   const player = lobby.players.find(p => p.id === playerId);
   if (!player) throw new Error('Player not found');
-  player.character = String(character ?? '').trim();
+  player.wordForNext = String(word ?? '').trim();
 }
 
 function setReady(lobby, playerId, ready) {
@@ -119,7 +119,7 @@ function submitGuess(lobby, playerId, guess) {
     currentPlayer.roundsToWin = currentPlayer.roundCount;
     lobby.lastWrongGuess = null;
   } else {
-    lobby.lastWrongGuess = { playerName: currentPlayer.character || currentPlayer.name, guess: String(guess).trim() };
+    lobby.lastWrongGuess = { playerName: currentPlayer.name, guess: String(guess).trim() };
   }
   advanceTurn(lobby);
   const placement = correct ? lobby.players.filter(p => p.hasWon).length : null;
@@ -169,7 +169,7 @@ function toClient(lobby, forPlayerId) {
     players: lobby.players.map(p => ({
       id: p.id,
       name: p.name,
-      character: p.character ?? '',
+      wordForNext: p.wordForNext ?? '',
       ready: p.ready ?? false,
       hasWon: p.hasWon,
       roundsToWin: p.roundsToWin,
@@ -187,8 +187,23 @@ function toClient(lobby, forPlayerId) {
       const nextIdx = (idx + 1) % lobby.players.length;
       const next = lobby.players[nextIdx];
       const alreadySubmitted = lobby.assignments[next.id];
-      return alreadySubmitted ? null : { playerId: next.id, playerName: next.character || next.name };
+      return alreadySubmitted ? null : { playerId: next.id, playerName: next.name };
     })(),
+    preFilledWord: (() => {
+      if (lobby.phase !== 'assigning' || !me) return null;
+      const idx = lobby.players.findIndex(p => p.id === forPlayerId);
+      if (idx === -1) return null;
+      return me.wordForNext ?? null;
+    })(),
+    nextPlayerForWord: (() => {
+      if (lobby.phase !== 'waiting' || !forPlayerId) return null;
+      const idx = lobby.players.findIndex(p => p.id === forPlayerId);
+      if (idx === -1) return null;
+      const nextIdx = (idx + 1) % lobby.players.length;
+      const next = lobby.players[nextIdx];
+      return next ? { playerId: next.id, playerName: next.name } : null;
+    })(),
+    myWordForNext: me?.wordForNext ?? '',
     canStart: lobby.phase === 'waiting' && lobby.players.length >= 2 && lobby.players.every(p => p.ready) && lobby.creatorId === forPlayerId,
     allAssignmentsIn: lobby.phase === 'assigning' && Object.keys(lobby.assignments).length === lobby.players.length,
     isHost: lobby.creatorId === forPlayerId,
@@ -215,4 +230,4 @@ function returnToLobby(lobby, playerId) {
   lobby.lastWrongGuess = null;
 }
 
-export { getLobby, createLobby, joinLobby, reorderPlayers, randomizeOrder, setCharacter, setReady, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby };
+export { getLobby, createLobby, joinLobby, reorderPlayers, randomizeOrder, setWordForNext, setReady, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby };

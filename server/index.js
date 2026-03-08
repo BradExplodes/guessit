@@ -5,7 +5,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { createLobby, joinLobby, getLobby, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby, reorderPlayers, randomizeOrder, setCharacter, setReady } from './lobby.js';
+import { createLobby, joinLobby, getLobby, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby, reorderPlayers, randomizeOrder, setWordForNext, setReady } from './lobby.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
@@ -201,11 +201,11 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('set-character', async ({ lobbyId, playerId, character }) => {
+  socket.on('set-word-for-next', async ({ lobbyId, playerId, word }) => {
     const lobby = getLobby(lobbyId);
     if (!lobby) return socket.emit('error', { message: 'Lobby not found' });
     try {
-      setCharacter(lobby, playerId, character);
+      setWordForNext(lobby, playerId, word);
       await broadcastLobbyState(lobbyId);
     } catch (e) {
       socket.emit('error', { message: e.message });

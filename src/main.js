@@ -143,7 +143,19 @@ function connectSocket() {
     render();
   });
   socket.on('error', (e) => {
-    if (e?.message) alert(e.message);
+    const msg = e?.message || '';
+    if (msg === 'Lobby not found' || msg === 'Player not found') {
+      if (socket) socket.disconnect();
+      socket = null;
+      state = null;
+      lobbyId = null;
+      playerId = null;
+      hostPassword = null;
+      localStorage.removeItem('guessit_lobbyId');
+      localStorage.removeItem('guessit_playerId');
+      render();
+    }
+    if (msg) alert(msg);
   });
   socket.on('guess-result', (r) => {
     state = { ...state };
@@ -165,6 +177,15 @@ function connectSocket() {
 async function fetchState() {
   try {
     const res = await fetch(`${API}/lobby/${lobbyId}?playerId=${encodeURIComponent(playerId || '')}`);
+    if (res.status === 404) {
+      state = null;
+      lobbyId = null;
+      playerId = null;
+      localStorage.removeItem('guessit_lobbyId');
+      localStorage.removeItem('guessit_playerId');
+      render();
+      return;
+    }
     if (!res.ok) return;
     state = await res.json();
     render();
@@ -184,12 +205,12 @@ function renderLobby() {
     const me = state.players?.find(p => p.isYou);
     main = `
       <p class="lobby-name-display">Lobby: <strong>${escapeHtml(state.name)}</strong></p>
-      ${me ? `
+      ${me && state.nextPlayerForWord && (state.players?.length || 0) >= 2 ? `
       <div class="character-section card">
-        <label>Your character</label>
-        <p class="subtitle" style="margin:0 0 0.5rem; font-size:0.85rem;">Who are you playing as? (e.g. a celebrity or character name)</p>
+        <label>Word for <strong>${escapeHtml(state.nextPlayerForWord.playerName)}</strong></label>
+        <p class="subtitle" style="margin:0 0 0.5rem; font-size:0.85rem;">The word that will go on their forehead. You can change this until you ready up.</p>
         <div class="character-row">
-          <input type="text" id="character-input" placeholder="e.g. Einstein" value="${escapeHtml(me.character || '')}" />
+          <input type="text" id="word-for-next-input" placeholder="e.g. Einstein" value="${escapeHtml(state.myWordForNext || '')}" />
           <button class="btn ${me.ready ? 'btn-secondary' : ''}" id="btn-ready">${me.ready ? 'Unready' : 'Ready'}</button>
         </div>
       </div>
@@ -199,7 +220,7 @@ function renderLobby() {
         ${(state.players || []).map((p, idx) => `
           <li class="${p.isYou ? 'is-you' : ''} ${isHost ? 'draggable' : ''}" data-player-id="${escapeHtml(p.id)}" ${isHost ? 'draggable="true"' : ''}>
             ${isHost ? '<span class="drag-handle" aria-hidden="true">⋮⋮</span>' : ''}
-            <span>${escapeHtml(p.character || p.name)} ${p.isYou ? ' (you)' : ''}</span>
+            <span>${escapeHtml(p.name)} ${p.isYou ? ' (you)' : ''}</span>
             <span class="ready-badge ${p.ready ? 'ready' : ''}">${p.ready ? '✓ Ready' : 'Not ready'}</span>
           </li>
         `).join('')}
@@ -219,7 +240,7 @@ function renderLobby() {
         <p class="subtitle">Enter the word (e.g. celebrity, character) for the player below. It will appear on their "forehead" for others to see.</p>
         <label>Word for <strong>${escapeHtml(target.playerName)}</strong></label>
         <div class="guess-form">
-          <input type="text" id="assign-word" placeholder="e.g. Einstein" />
+          <input type="text" id="assign-word" placeholder="e.g. Einstein" value="${escapeHtml(state.preFilledWord || '')}" />
           <button class="btn" id="btn-assign">Submit</button>
         </div>
         `
@@ -232,7 +253,7 @@ function renderLobby() {
       ? Math.max(0, 60 - Math.floor((Date.now() - state.turnStartedAt) / 1000))
       : null;
     const currentPlayer = state.players?.find(p => p.id === state.currentTurnPlayerId);
-    const currentDisplayName = currentPlayer ? (currentPlayer.character || currentPlayer.name) : '';
+    const currentDisplayName = currentPlayer ? currentPlayer.name : '';
     main = `
       <p class="lobby-name-display">Lobby: <strong>${escapeHtml(state.name)}</strong></p>
       ${phase === 'finished'
@@ -247,7 +268,7 @@ function renderLobby() {
           const place = placements.get(p.id);
           return `
           <li class="${p.isYou ? 'is-you ' : ''}${p.isCurrentTurn ? 'is-turn' : ''}">
-            <span>${escapeHtml(p.character || p.name)} ${p.isYou ? ' (you)' : ''}</span>
+            <span>${escapeHtml(p.name)} ${p.isYou ? ' (you)' : ''}</span>
             <span>
               ${p.hasWon && place != null ? `<span class="badge badge-won">${ordinal(place)}</span> <span class="badge badge-rounds">${p.roundsToWin} round(s)</span>` : (p.isCurrentTurn ? '<span class="badge">Guessing…</span>' : '')}
             </span>
@@ -341,20 +362,14 @@ function bindLobby() {
       socket?.emit('reorder-players', { lobbyId, playerId, playerIds: without });
     });
   }
-  getEl('character-input')?.addEventListener('blur', () => {
-    const character = getEl('character-input')?.value?.trim() ?? '';
-    socket?.emit('set-character', { lobbyId, playerId, character });
+  getEl('word-for-next-input')?.addEventListener('blur', () => {
+    const word = getEl('word-for-next-input')?.value?.trim() ?? '';
+    socket?.emit('set-word-for-next', { lobbyId, playerId, word });
   });
   getEl('btn-ready')?.addEventListener('click', () => {
     const me = state?.players?.find(p => p.isYou);
     if (!me) return;
-    if (me.ready) {
-      socket?.emit('set-ready', { lobbyId, playerId, ready: false });
-    } else {
-      const character = getEl('character-input')?.value?.trim() ?? '';
-      socket?.emit('set-character', { lobbyId, playerId, character });
-      socket?.emit('set-ready', { lobbyId, playerId, ready: true });
-    }
+    socket?.emit('set-ready', { lobbyId, playerId, ready: !me.ready });
   });
   getEl('btn-random-order')?.addEventListener('click', () => {
     socket?.emit('randomize-order', { lobbyId, playerId });
