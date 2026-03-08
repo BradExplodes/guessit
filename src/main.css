@@ -1,14 +1,20 @@
+/* Palette: #0081a7 (teal), #00afb9 (teal-light), #fdfcdc (cream), #fed9b7 (peach), #f07167 (coral) */
 :root {
-  --bg: #0f0d14;
-  --surface: #1a1625;
-  --surface2: #252030;
-  --border: #3d3548;
-  --text: #e8e4ef;
-  --text-muted: #9b93a8;
-  --accent: #c77dff;
-  --accent-dim: #7b2cbf;
-  --success: #52b788;
-  --warning: #f4a261;
+  --teal: #0081a7;
+  --teal-light: #00afb9;
+  --cream: #fdfcdc;
+  --peach: #fed9b7;
+  --coral: #f07167;
+  --bg: var(--cream);
+  --surface: var(--peach);
+  --surface2: #fef3e8;
+  --border: var(--teal);
+  --text: #1a3a42;
+  --text-muted: var(--teal);
+  --accent: var(--coral);
+  --accent-dim: var(--teal);
+  --success: var(--teal-light);
+  --warning: var(--coral);
   --radius: 12px;
   --font: 'Outfit', system-ui, sans-serif;
 }
@@ -33,11 +39,17 @@ body {
   margin: 0 auto;
 }
 
+#app.game-screen {
+  max-width: none;
+  padding: 0;
+}
+
 h1 {
   font-size: 1.75rem;
   font-weight: 700;
   margin: 0 0 0.5rem;
   letter-spacing: -0.02em;
+  color: var(--teal);
 }
 
 .subtitle {
@@ -48,7 +60,7 @@ h1 {
 
 .card {
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
   border-radius: var(--radius);
   padding: 1.25rem 1.5rem;
   margin-bottom: 1rem;
@@ -72,8 +84,8 @@ textarea {
   font: inherit;
   font-size: 1rem;
   color: var(--text);
-  background: var(--surface2);
-  border: 1px solid var(--border);
+  background: var(--cream);
+  border: 2px solid var(--border);
   border-radius: 8px;
   margin-bottom: 1rem;
 }
@@ -81,8 +93,8 @@ textarea {
 input:focus,
 textarea:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(199, 125, 255, 0.2);
+  border-color: var(--teal-light);
+  box-shadow: 0 0 0 2px rgba(0, 175, 185, 0.25);
 }
 
 textarea {
@@ -96,8 +108,8 @@ textarea {
   font: inherit;
   font-size: 0.95rem;
   font-weight: 600;
-  color: var(--bg);
-  background: var(--accent);
+  color: var(--cream);
+  background: var(--coral);
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -105,7 +117,7 @@ textarea {
 }
 
 .btn:hover {
-  background: #d68cff;
+  background: #e85a50;
 }
 
 .btn:active {
@@ -119,27 +131,168 @@ textarea {
 }
 
 .btn-secondary {
-  background: var(--surface2);
-  color: var(--text);
-  border: 1px solid var(--border);
+  background: var(--teal);
+  color: var(--cream);
+  border: 2px solid var(--teal);
 }
 
 .btn-secondary:hover {
-  background: var(--border);
-  color: var(--text);
+  background: var(--teal-light);
+  border-color: var(--teal-light);
+  color: var(--cream);
 }
 
 .btn-success {
-  background: var(--success);
-  color: var(--bg);
+  background: var(--teal-light);
+  color: var(--cream);
 }
 
 .error {
-  color: #ff6b6b;
+  color: var(--coral);
   font-size: 0.9rem;
   margin-bottom: 0.75rem;
 }
 
+/* ----- Game layout: left = player circle, right = info + notepad ----- */
+.game-layout {
+  display: flex;
+  min-height: 100vh;
+  flex-wrap: wrap;
+}
+
+.game-left {
+  flex: 1 1 65%;
+  min-width: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: linear-gradient(135deg, var(--cream) 0%, var(--peach) 100%);
+}
+
+.game-right {
+  flex: 0 1 35%;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: var(--cream);
+  border-left: 2px solid var(--border);
+}
+
+.player-circle {
+  position: relative;
+  width: min( min(80vw, 420px), 100% );
+  aspect-ratio: 1;
+  max-width: 100%;
+}
+
+.player-circle-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  z-index: 2;
+}
+
+.player-circle-center .turn-arrow {
+  display: block;
+  width: 0;
+  height: 0;
+  margin: 0 auto 0.25rem;
+  border-left: 12px solid transparent;
+  border-right: 12px solid transparent;
+  border-bottom: 24px solid var(--teal);
+}
+
+.player-circle-center .turn-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  margin: 0;
+  max-width: 120px;
+  line-height: 1.2;
+}
+
+.player-dots {
+  position: absolute;
+  inset: 0;
+}
+
+.player-dot {
+  position: absolute;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--cream);
+  text-align: center;
+  line-height: 1.1;
+  padding: 2px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.player-dot.inactive {
+  background: var(--teal-light);
+  border: 2px solid var(--teal);
+}
+
+.player-dot.active {
+  background: var(--coral);
+  border: 2px solid #c95a52;
+  box-shadow: 0 0 0 4px rgba(240, 113, 103, 0.3);
+}
+
+.player-dot.you {
+  border-width: 3px;
+  border-color: var(--teal);
+}
+
+.player-dot .badge-won {
+  font-size: 0.55rem;
+  padding: 0.1rem 0.25rem;
+  margin-top: 0.1rem;
+}
+
+.game-info-panel {
+  flex: 0 0 auto;
+}
+
+.game-info-panel h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--teal);
+}
+
+.notepad-panel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 180px;
+}
+
+.notepad-panel label {
+  margin-bottom: 0.5rem;
+}
+
+.notepad-panel textarea {
+  flex: 1;
+  min-height: 120px;
+  margin-bottom: 0.75rem;
+}
+
+/* ----- Lobby / non-game ----- */
 .players-list {
   list-style: none;
   padding: 0;
@@ -155,14 +308,15 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+  border: 1px solid rgba(0, 129, 167, 0.2);
 }
 
 .players-list li.is-you {
-  border: 1px solid var(--accent-dim);
+  border-color: var(--teal);
 }
 
 .players-list li.is-turn {
-  box-shadow: 0 0 0 2px var(--accent);
+  box-shadow: 0 0 0 2px var(--coral);
 }
 
 .players-list-draggable {
@@ -183,8 +337,9 @@ textarea {
 }
 
 .players-list li.drag-over {
-  box-shadow: 0 0 0 2px var(--accent);
-  background: var(--border);
+  box-shadow: 0 0 0 2px var(--coral);
+  background: var(--teal-light);
+  opacity: 0.9;
 }
 
 .drag-handle {
@@ -224,14 +379,14 @@ textarea {
 }
 
 .ready-badge.ready {
-  color: var(--success);
+  color: var(--teal);
   font-weight: 600;
 }
 
 .wrong-guess-msg {
   font-size: 0.9rem;
   color: var(--text-muted);
-  margin: -0.25rem 0 0.75rem;
+  margin: 0 0 0.75rem;
   font-style: italic;
 }
 
@@ -244,8 +399,8 @@ textarea {
 }
 
 .badge-won {
-  background: rgba(82, 183, 136, 0.25);
-  color: var(--success);
+  background: rgba(0, 175, 185, 0.25);
+  color: var(--teal);
 }
 
 .badge-rounds {
@@ -262,8 +417,8 @@ textarea {
 }
 
 .turn-banner {
-  background: linear-gradient(135deg, var(--accent-dim), var(--accent));
-  color: white;
+  background: linear-gradient(135deg, var(--teal), var(--teal-light));
+  color: var(--cream);
   padding: 0.75rem 1rem;
   border-radius: var(--radius);
   text-align: center;
@@ -278,11 +433,11 @@ textarea {
 .turn-timer {
   font-size: 0.9rem;
   color: var(--text-muted);
-  margin: -0.5rem 0 1rem;
+  margin: 0 0 0.5rem;
 }
 
 .turn-timer strong {
-  color: var(--warning);
+  color: var(--coral);
 }
 
 .player-word {
@@ -296,8 +451,8 @@ textarea {
 }
 
 .finished-banner {
-  background: var(--success);
-  color: var(--bg);
+  background: var(--teal-light);
+  color: var(--cream);
   padding: 1rem;
   border-radius: var(--radius);
   text-align: center;
@@ -308,12 +463,14 @@ textarea {
 .guess-form {
   display: flex;
   gap: 0.5rem;
-  margin-top: 1rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .guess-form input {
   margin-bottom: 0;
   flex: 1;
+  min-width: 120px;
 }
 
 .guess-result {
@@ -325,13 +482,13 @@ textarea {
 }
 
 .guess-result.correct {
-  background: rgba(82, 183, 136, 0.2);
-  color: var(--success);
+  background: rgba(0, 175, 185, 0.2);
+  color: var(--teal);
 }
 
 .guess-result.wrong {
-  background: rgba(255, 107, 107, 0.15);
-  color: #ff6b6b;
+  background: rgba(240, 113, 103, 0.15);
+  color: var(--coral);
 }
 
 .tabs {
@@ -346,15 +503,15 @@ textarea {
   font-size: 0.9rem;
   color: var(--text-muted);
   background: transparent;
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
 }
 
 .tabs button.active {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: rgba(199, 125, 255, 0.1);
+  color: var(--teal);
+  border-color: var(--coral);
+  background: rgba(240, 113, 103, 0.1);
 }
 
 .lobby-name-display {
@@ -365,4 +522,9 @@ textarea {
 
 .lobby-name-display strong {
   color: var(--text);
+}
+
+.game-leave-row {
+  margin-top: auto;
+  padding-top: 1rem;
 }

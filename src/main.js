@@ -29,6 +29,8 @@ function render() {
   }
 
   app.innerHTML = renderLobby();
+  const isGameScreen = state && (state.phase === 'guessing' || state.phase === 'finished');
+  app.classList.toggle('game-screen', !!isGameScreen);
   bindLobby();
 }
 
@@ -254,47 +256,36 @@ function renderLobby() {
       : null;
     const currentPlayer = state.players?.find(p => p.id === state.currentTurnPlayerId);
     const currentDisplayName = currentPlayer ? currentPlayer.name : '';
-    main = `
-      <p class="lobby-name-display">Lobby: <strong>${escapeHtml(state.name)}</strong></p>
-      ${phase === 'finished'
-        ? '<div class="finished-banner">Everyone has guessed their word! Game over.</div>'
-        : isMyTurn
-          ? '<div class="turn-banner you">Your turn — guess the name on your forehead!</div>'
-          : `<div class="turn-banner">${escapeHtml(currentDisplayName)}'s turn</div>`}
-      ${turnSecondsLeft != null ? `<p class="turn-timer">Time left: <strong id="turn-countdown">${turnSecondsLeft}</strong>s</p>` : ''}
-      ${state.lastWrongGuess ? `<p class="wrong-guess-msg">${escapeHtml(state.lastWrongGuess.playerName)} guessed "${escapeHtml(state.lastWrongGuess.guess)}" — wrong!</p>` : ''}
-      <ul class="players-list">
-        ${(state.players || []).map(p => {
-          const place = placements.get(p.id);
-          return `
-          <li class="${p.isYou ? 'is-you ' : ''}${p.isCurrentTurn ? 'is-turn' : ''}">
-            <span>${escapeHtml(p.name)} ${p.isYou ? ' (you)' : ''}</span>
-            <span>
-              ${p.hasWon && place != null ? `<span class="badge badge-won">${ordinal(place)}</span> <span class="badge badge-rounds">${p.roundsToWin} round(s)</span>` : (p.isCurrentTurn ? '<span class="badge">Guessing…</span>' : '')}
-            </span>
-            ${p.word != null ? `<span class="player-word">${escapeHtml(p.word)}</span>` : ''}
-          </li>
-        `}).join('')}
-      </ul>
-      ${state.myAssignedWord ? `<p class="subtitle">Your word was: <strong>${escapeHtml(state.myAssignedWord)}</strong></p>` : ''}
-      ${phase === 'guessing' && isMyTurn ? `
-        <div class="guess-form">
-          <input type="text" id="guess-input" placeholder="Your guess" autocomplete="off" />
-          <button class="btn" id="btn-guess">Guess</button>
-          <button class="btn btn-secondary" id="btn-skip">Skip</button>
-        </div>
-      ` : ''}
-      ${phase === 'finished' && state.isHost ? `<button class="btn" id="btn-return-lobby">Return to lobby</button>` : ''}
-      <div class="notes-section card">
-        <label>Your notes</label>
-        <textarea id="notes-field" placeholder="Jot down clues from Discord…">${escapeHtml(state.myNotes || '')}</textarea>
-        <button class="btn btn-secondary" id="btn-save-notes">Save notes</button>
-      </div>
-    `;
+    const players = state.players || [];
+    const n = players.length;
+    const currentIdx = currentPlayer ? players.findIndex(p => p.id === currentPlayer.id) : 0;
+    const orderedPlayers = n ? [...players.slice(currentIdx), ...players.slice(0, currentIdx)] : [];
+    const turnLabel = phase === 'finished'
+      ? 'Game over'
+      : isMyTurn
+        ? "It's your turn to guess!"
+        : `It's ${escapeHtml(currentDisplayName)}'s turn to guess`;
+    main = renderGameLayout({
+      orderedPlayers,
+      placements,
+      turnLabel,
+      phase,
+      turnSecondsLeft,
+      lastWrongGuess: state.lastWrongGuess,
+      myAssignedWord: state.myAssignedWord,
+      isMyTurn,
+      isHost: state.isHost,
+      myNotes: state.myNotes,
+      lobbyName: state.name,
+    });
   } else {
     main = '<p class="subtitle">Loading…</p>';
   }
 
+  const isGameScreen = state && (state.phase === 'guessing' || state.phase === 'finished');
+  if (isGameScreen) {
+    return main;
+  }
   return `
     <h1>Who Am I?</h1>
     <div class="card">
@@ -430,6 +421,77 @@ function escapeHtml(s) {
   const div = document.createElement('div');
   div.textContent = s;
   return div.innerHTML;
+}
+
+function renderGameLayout(opts) {
+  const {
+    orderedPlayers,
+    placements,
+    turnLabel,
+    phase,
+    turnSecondsLeft,
+    lastWrongGuess,
+    myAssignedWord,
+    isMyTurn,
+    isHost,
+    myNotes,
+  } = opts;
+  const n = orderedPlayers.length;
+  const radius = 42;
+  const playerDots = orderedPlayers.map((p, i) => {
+    const angleDeg = n ? (i / n) * 360 : 0;
+    const angleRad = (angleDeg - 90) * (Math.PI / 180);
+    const left = 50 + radius * Math.cos(angleRad);
+    const top = 50 + radius * Math.sin(angleRad);
+    const active = p.isCurrentTurn;
+    const place = placements.get(p.id);
+    const label = p.name.length > 8 ? p.name.slice(0, 7) + '…' : p.name;
+    return `
+      <div class="player-dot ${active ? 'active' : 'inactive'} ${p.isYou ? 'you' : ''}" style="left:${left}%;top:${top}%;margin-left:-24px;margin-top:-24px;" title="${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}">
+        ${label}
+        ${p.hasWon && place != null ? `<span class="badge badge-won">${ordinal(place)}</span>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="game-layout">
+      <div class="game-left">
+        <div class="player-circle">
+          <div class="player-circle-center">
+            <span class="turn-arrow"></span>
+            <p class="turn-label">${escapeHtml(turnLabel)}</p>
+          </div>
+          <div class="player-dots">${playerDots}</div>
+        </div>
+      </div>
+      <div class="game-right">
+        <div class="game-info-panel card">
+          <h3>Round / game info</h3>
+          <p class="lobby-name-display" style="margin-bottom:0.5rem;">Lobby: <strong>${escapeHtml((opts.lobbyName || ''))}</strong></p>
+          ${turnSecondsLeft != null ? `<p class="turn-timer">Time left: <strong id="turn-countdown">${turnSecondsLeft}</strong>s</p>` : ''}
+          ${lastWrongGuess ? `<p class="wrong-guess-msg">${escapeHtml(lastWrongGuess.playerName)} guessed "${escapeHtml(lastWrongGuess.guess)}" — wrong!</p>` : ''}
+          ${myAssignedWord ? `<p class="subtitle" style="margin-bottom:0.5rem;">Your word was: <strong>${escapeHtml(myAssignedWord)}</strong></p>` : ''}
+          ${phase === 'guessing' && isMyTurn ? `
+            <div class="guess-form">
+              <input type="text" id="guess-input" placeholder="Your guess" autocomplete="off" />
+              <button class="btn" id="btn-guess">Guess</button>
+              <button class="btn btn-secondary" id="btn-skip">Skip</button>
+            </div>
+          ` : ''}
+          ${phase === 'finished' && isHost ? `<button class="btn" id="btn-return-lobby">Return to lobby</button>` : ''}
+        </div>
+        <div class="notepad-panel card">
+          <label>Your notes</label>
+          <textarea id="notes-field" placeholder="Jot down clues from Discord…">${escapeHtml(myNotes || '')}</textarea>
+          <button class="btn btn-secondary" id="btn-save-notes">Save notes</button>
+        </div>
+        <div class="game-leave-row">
+          <button class="btn btn-secondary" id="btn-leave">Leave lobby</button>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function ordinal(n) {

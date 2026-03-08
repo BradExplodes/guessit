@@ -82,10 +82,22 @@ function startGame(lobby, playerId) {
   if (lobby.phase !== 'waiting') throw new Error('Game already started');
   if (lobby.players.length < 2) throw new Error('Need at least 2 players');
   if (!lobby.players.every(p => p.ready)) throw new Error('Everyone must be ready before starting');
+  if (!lobby.players.every(p => (p.wordForNext || '').trim())) throw new Error('Everyone must enter a word for the next player before starting');
   if (lobby.creatorId !== playerId) throw new Error('Only the host can start the game');
-  lobby.phase = 'assigning';
   lobby.order = lobby.players.map((_, i) => i);
+  const n = lobby.players.length;
   lobby.assignments = {};
+  for (let i = 0; i < n; i++) {
+    const nextIdx = (i + 1) % n;
+    const nextPlayer = lobby.players[nextIdx];
+    lobby.assignments[nextPlayer.id] = { word: String(lobby.players[i].wordForNext || '').trim(), fromPlayerId: lobby.players[i].id };
+  }
+  lobby.players.forEach(p => {
+    p.assignedWord = lobby.assignments[p.id]?.word ?? null;
+  });
+  lobby.phase = 'guessing';
+  lobby.currentTurnIndex = 0;
+  lobby.turnStartedAt = Date.now();
 }
 
 function submitAssignment(lobby, playerId, word) {

@@ -123,6 +123,7 @@ io.on('connection', (socket) => {
     try {
       startGame(lobby, playerId);
       await broadcastLobbyState(lobbyId);
+      setLobbyTurnTimer(lobbyId);
     } catch (e) {
       socket.emit('error', { message: e.message });
     }
