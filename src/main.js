@@ -8,6 +8,7 @@ let lobbyId = null;
 let playerId = null;
 let hostPassword = null;
 let turnCountdownIntervalId = null;
+let gameNotesLocal = null;
 
 function getEl(id) {
   return document.getElementById(id);
@@ -28,6 +29,12 @@ function render() {
     return;
   }
 
+  if (state && (state.phase === 'guessing' || state.phase === 'finished')) {
+    const notesEl = getEl('notes-field');
+    if (notesEl) gameNotesLocal = notesEl.value;
+  } else {
+    gameNotesLocal = null;
+  }
   app.innerHTML = renderLobby();
   const isGameScreen = state && (state.phase === 'guessing' || state.phase === 'finished');
   app.classList.toggle('game-screen', !!isGameScreen);
@@ -266,6 +273,7 @@ function renderLobby() {
         ? "It's your turn to guess!"
         : `It's ${escapeHtml(currentDisplayName)}'s turn to guess`;
     const currentRound = currentPlayer ? (currentPlayer.roundCount || 0) + 1 : 1;
+    const notesForLayout = gameNotesLocal !== null ? gameNotesLocal : (state.myNotes || '');
     main = renderGameLayout({
       orderedPlayers,
       placements,
@@ -277,7 +285,7 @@ function renderLobby() {
       myAssignedWord: state.myAssignedWord,
       isMyTurn,
       isHost: state.isHost,
-      myNotes: state.myNotes,
+      myNotes: notesForLayout,
       lobbyName: state.name,
       currentRound,
     });
@@ -402,16 +410,6 @@ function bindLobby() {
   getEl('btn-return-lobby')?.addEventListener('click', () => {
     socket?.emit('return-to-lobby', { lobbyId, playerId });
   });
-  (() => {
-    let notesDebounce = null;
-    getEl('notes-field')?.addEventListener('input', () => {
-      clearTimeout(notesDebounce);
-      notesDebounce = setTimeout(() => {
-        const notes = getEl('notes-field')?.value ?? '';
-        socket?.emit('update-notes', { lobbyId, playerId, notes });
-      }, 400);
-    });
-  })();
   getEl('btn-leave')?.addEventListener('click', () => {
     if (socket) socket.disconnect();
     socket = null;
@@ -448,8 +446,8 @@ function renderGameLayout(opts) {
     currentRound,
   } = opts;
   const n = orderedPlayers.length;
-  const radius = 38;
-  const dotHalf = 44;
+  const radius = 36;
+  const dotHalf = 58;
   const wrongGuessesList = (currentTurnWrongGuesses && currentTurnWrongGuesses.length)
     ? currentTurnWrongGuesses.map(w => `${escapeHtml(w.playerName)}: "${escapeHtml(w.guess)}"`).join(' • ')
     : (lastWrongGuess ? `${escapeHtml(lastWrongGuess.playerName)} guessed "${escapeHtml(lastWrongGuess.guess)}" — wrong!` : '');
@@ -460,8 +458,8 @@ function renderGameLayout(opts) {
     const top = 50 + radius * Math.sin(angleRad);
     const active = p.isCurrentTurn;
     const place = placements.get(p.id);
-    const label = p.name.length > 10 ? p.name.slice(0, 9) + '…' : p.name;
-    const wordSticky = !p.isYou && p.word ? `<span class="player-word-sticky" title="${escapeHtml(p.word)}">${escapeHtml(p.word.length > 8 ? p.word.slice(0, 7) + '…' : p.word)}</span>` : '';
+    const label = p.name;
+    const wordSticky = !p.isYou && p.word ? `<span class="player-word-sticky">${escapeHtml(p.word)}</span>` : '';
     return `
       <div class="player-dot ${active ? 'active' : 'inactive'} ${p.isYou ? 'you' : ''}" style="left:${left}%;top:${top}%;margin-left:-${dotHalf}px;margin-top:-${dotHalf}px;" title="${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}">
         ${wordSticky}

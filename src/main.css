@@ -253,20 +253,21 @@ textarea {
 
 .player-dot {
   position: absolute;
-  width: 88px;
-  height: 88px;
+  width: 116px;
+  height: 116px;
   border-radius: 50%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 0.75rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: #fff;
   text-align: center;
-  line-height: 1.15;
-  padding: 4px;
+  line-height: 1.2;
+  padding: 6px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  word-break: break-word;
 }
 
 .player-dot.inactive {
@@ -286,31 +287,31 @@ textarea {
 }
 
 .player-dot .badge-won {
-  font-size: 0.55rem;
-  padding: 0.1rem 0.25rem;
-  margin-top: 0.1rem;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.4rem;
+  margin-top: 0.15rem;
 }
 
 .player-word-sticky {
   position: absolute;
-  top: -6px;
-  right: -6px;
-  min-width: 2.5em;
-  max-width: 4.5em;
-  padding: 0.2em 0.35em;
-  font-size: 0.6rem;
+  top: -8px;
+  right: -8px;
+  min-width: 3em;
+  max-width: 6em;
+  padding: 0.35em 0.5em;
+  font-size: 0.85rem;
   font-weight: 600;
   color: #1c1917;
   background: #fef08a;
   border: 1px solid #eab308;
-  border-radius: 2px;
+  border-radius: 3px;
   box-shadow: 1px 1px 3px rgba(0,0,0,0.2);
   transform: rotate(8deg);
   z-index: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   line-height: 1.2;
+  white-space: normal;
+  word-break: break-word;
+  text-align: center;
 }
 
 .game-info-panel {
@@ -330,56 +331,24 @@ textarea {
   display: flex;
   flex-direction: column;
   min-height: 180px;
-  background: #fffbeb;
-  border: 1px solid #e7e5e4;
-  border-radius: var(--radius);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-  padding: 1rem 1rem 1rem 2.5rem;
-  position: relative;
-}
-
-.notepad-panel::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2rem;
-  background: linear-gradient(to right, #fef3c7 0%, #fde68a 70%);
-  border-right: 2px solid #d97706;
-  border-radius: var(--radius) 0 0 var(--radius);
 }
 
 .notepad-panel label {
   margin-bottom: 0.5rem;
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   color: var(--text-muted);
-  letter-spacing: 0.08em;
 }
 
 .notepad-panel textarea {
   flex: 1;
   min-height: 140px;
   margin-bottom: 0;
-  background: transparent;
-  background-image: repeating-linear-gradient(
-    transparent,
-    transparent 1.4em,
-    rgba(0,0,0,0.06) 1.4em,
-    rgba(0,0,0,0.06) 1.42em
-  );
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  padding: 0.15rem 0 0.5rem;
-  line-height: 1.5em;
-  resize: none;
-}
-
-.notepad-panel textarea:focus {
-  box-shadow: none;
-  border: none;
-  outline: none;
+  font: inherit;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  resize: vertical;
 }
 
 /* ----- Lobby / non-game ----- */
