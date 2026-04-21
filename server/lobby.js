@@ -516,26 +516,30 @@ function scoreAndAdvanceWavelengthRound(lobby) {
     .map(([pid, g]) => ({ playerId: pid, guess: g }))
     .filter(e => e.guess != null);
 
-  let bestDist = null;
-  for (const e of entries) {
-    const d = Math.abs(e.guess - target);
-    if (bestDist == null || d < bestDist) bestDist = d;
-  }
-  const winners = bestDist == null
-    ? []
-    : entries.filter(e => Math.abs(e.guess - target) === bestDist).map(e => e.playerId);
+  const perfectGuessers = entries.filter(e => Math.abs(e.guess - target) === 0).map(e => e.playerId);
+  const withinOneGuessers = entries.filter(e => Math.abs(e.guess - target) === 1).map(e => e.playerId);
 
-  winners.forEach(pid => {
+  // Scoring rules (award to everyone who qualifies):
+  // - Spot on: +3 to every perfect guesser; clue giver gets +1 per perfect guesser
+  // - Within 1: +1 to every within-1 guesser (even if someone else is closer / perfect)
+  perfectGuessers.forEach(pid => {
+    const p = lobby.players.find(x => x.id === pid);
+    if (p) p.score = (p.score ?? 0) + 3;
+  });
+  withinOneGuessers.forEach(pid => {
     const p = lobby.players.find(x => x.id === pid);
     if (p) p.score = (p.score ?? 0) + 1;
   });
+  if (currentPlayer && perfectGuessers.length) {
+    currentPlayer.score = (currentPlayer.score ?? 0) + perfectGuessers.length;
+  }
 
   lobby.wavelength.lastRound = {
     clueGiverId: currentPlayer?.id ?? null,
     target,
     clueText: lobby.wavelength.clueText ?? '',
-    winners,
-    bestDistance: bestDist,
+    perfectGuessers,
+    withinOneGuessers,
     guesses,
   };
 

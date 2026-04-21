@@ -764,16 +764,31 @@ function renderWavelengthLayout() {
   const lastRoundBlock = lastRound
     ? (() => {
         const clueGiverName = state.players?.find(p => p.id === lastRound.clueGiverId)?.name || 'Unknown';
-        const winners = (lastRound.winners || []).map(pid => state.players?.find(p => p.id === pid)?.name).filter(Boolean);
-        const winnersLabel = winners.length ? winners.map(escapeHtml).join(', ') : 'No one';
-        const distLabel = lastRound.bestDistance != null ? ` (closest by ${lastRound.bestDistance})` : '';
+        const perfect = (lastRound.perfectGuessers || []).map(pid => state.players?.find(p => p.id === pid)?.name).filter(Boolean);
+        const within1 = (lastRound.withinOneGuessers || []).map(pid => state.players?.find(p => p.id === pid)?.name).filter(Boolean);
+        const perfectLabel = perfect.length ? perfect.map(escapeHtml).join(', ') : 'No one';
+        const within1Label = within1.length ? within1.map(escapeHtml).join(', ') : 'No one';
+        const clueGiverPts = (lastRound.perfectGuessers || []).length;
+        const lastGuesses = lastRound.guesses || {};
+        const guessLines = (state.players || [])
+          .filter(p => p.id !== lastRound.clueGiverId)
+          .map(p => {
+            const g = lastGuesses[p.id];
+            return `<li><span>${escapeHtml(p.name)}</span><span class="wavelength-guess-num">${g != null ? escapeHtml(String(g)) : '—'}</span></li>`;
+          }).join('');
         return `
           <div class="card wavelength-last-round">
             <h3 style="margin:0 0 0.5rem; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Last round</h3>
             <p style="margin:0.25rem 0;"><strong>Clue giver:</strong> ${escapeHtml(clueGiverName)}</p>
             <p style="margin:0.25rem 0;"><strong>Target:</strong> ${escapeHtml(String(lastRound.target))}</p>
             <p style="margin:0.25rem 0;"><strong>Clue:</strong> ${escapeHtml(lastRound.clueText || '(no clue)')}</p>
-            <p style="margin:0.25rem 0;"><strong>Point:</strong> ${winnersLabel}${distLabel}</p>
+            <p style="margin:0.25rem 0;"><strong>Perfect (+3):</strong> ${perfectLabel}</p>
+            <p style="margin:0.25rem 0;"><strong>Within 1 (+1):</strong> ${within1Label}</p>
+            ${clueGiverPts ? `<p style="margin:0.25rem 0;"><strong>Clue giver bonus:</strong> +${escapeHtml(String(clueGiverPts))}</p>` : ''}
+            <div style="margin-top:0.75rem;">
+              <p style="margin:0 0 0.35rem;"><strong>Guesses</strong></p>
+              <ul class="wavelength-guesses">${guessLines || ''}</ul>
+            </div>
           </div>
         `;
       })()
@@ -830,22 +845,42 @@ function renderWavelengthLayout() {
     `;
   }
 
-  const playerDots = (state.players || []).map(p => `
-    <div class="player-dot ${p.isCurrentTurn ? 'active' : 'inactive'} ${p.isYou ? 'you' : ''}" style="position:static; width:auto; height:auto; border-radius:var(--radius-sm); padding:0.5rem 0.75rem; box-shadow:none; margin-bottom:0.4rem;">
-      <div style="display:flex; gap:0.5rem; width:100%; align-items:center; justify-content:space-between;">
-        <span>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</span>
-        <span class="badge" style="background:rgba(37,99,235,0.12); color:var(--accent);"> ${escapeHtml(String(p.score ?? 0))} </span>
+  const players = state.players || [];
+  const n = players.length;
+  const currentIdx = currentPlayer ? players.findIndex(p => p.id === currentPlayer.id) : 0;
+  const orderedPlayers = n ? [...players.slice(currentIdx), ...players.slice(0, currentIdx)] : [];
+
+  const radius = 50;
+  const dotHalf = 58;
+  const circleDots = orderedPlayers.map((p, i) => {
+    const angleDeg = n ? (i / n) * 360 : 0;
+    const angleRad = (angleDeg - 90) * (Math.PI / 180);
+    const left = 50 + radius * Math.cos(angleRad);
+    const top = 50 + radius * Math.sin(angleRad);
+    const active = p.isCurrentTurn;
+    return `
+      <div class="player-dot ${active ? 'active' : 'inactive'} ${p.isYou ? 'you' : ''}" style="left:${left}%;top:${top}%;margin-left:-${dotHalf}px;margin-top:-${dotHalf}px;" title="${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}">
+        <span class="wavelength-score-badge" aria-label="Score">${escapeHtml(String(p.score ?? 0))}</span>
+        ${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}
       </div>
-    </div>
+    `;
+  }).join('');
+
+  const scoreboardList = scores.map(p => `
+    <li>
+      <span>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</span>
+      <span class="wavelength-guess-num">${escapeHtml(String(p.score ?? 0))}</span>
+    </li>
   `).join('');
 
   return `
     <div class="game-layout">
       <div class="game-left">
-        <div class="player-circle" style="width:min(min(90vw,520px),100%);">
-          <div class="player-circle-center" style="max-width:360px;">
+        <div class="player-circle" style="width:min( min(80vw, 420px), 100% );">
+          <div class="player-circle-center">
             ${center}
           </div>
+          <div class="player-dots">${circleDots}</div>
         </div>
       </div>
       <div class="game-right">
@@ -855,7 +890,7 @@ function renderWavelengthLayout() {
           <p class="subtitle" style="margin:0 0 0.75rem;">First to <strong>${escapeHtml(String(pointsToWin))}</strong> points.</p>
           <div class="wavelength-scoreboard">
             <h4 style="margin:0 0 0.5rem; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Scores</h4>
-            <div>${playerDots}</div>
+            <ul class="wavelength-guesses">${scoreboardList}</ul>
           </div>
           ${phase === 'wavelength_guessing' ? `<div class="wavelength-guesses-wrap"><h4 style="margin:0.75rem 0 0.5rem; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Guesses</h4>${guessesList || '<p class="subtitle" style="margin:0;">No guesses yet.</p>'}</div>` : ''}
         </div>
