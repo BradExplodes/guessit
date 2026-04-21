@@ -220,6 +220,27 @@ textarea {
   resize: vertical;
 }
 
+.input-with-button {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+  margin-bottom: 1rem;
+}
+
+.input-with-button input {
+  margin-bottom: 0;
+  flex: 1;
+}
+
+.icon-btn {
+  width: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+}
+
 .btn {
   display: inline-block;
   padding: 0.65rem 1.25rem;
@@ -437,7 +458,7 @@ textarea {
 
 .player-image-sticky {
   position: absolute;
-  top: -56px;
+  bottom: -18px;
   left: 50%;
   width: 56px;
   height: 56px;
@@ -447,7 +468,15 @@ textarea {
   background: var(--surface2);
   box-shadow: 0 4px 10px rgba(0,0,0,0.18);
   transform: translateX(-50%) rotate(4deg);
+  transform-origin: 50% 50%;
+  transition: transform 140ms ease, box-shadow 140ms ease;
   z-index: 1;
+}
+
+.player-dot:hover .player-image-sticky {
+  transform: translateX(-50%) rotate(4deg) scale(1.5);
+  box-shadow: 0 10px 22px rgba(0,0,0,0.22);
+  z-index: 4;
 }
 
 .game-info-panel {

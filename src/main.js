@@ -106,7 +106,10 @@ function renderHome() {
       <h2 style="margin:0 0 1rem; font-size:1.1rem;">Create lobby</h2>
       <div id="create-error" class="error" style="display:none;"></div>
       <label>Lobby name</label>
-      <input type="text" id="create-name" placeholder="e.g. Saturday Night" />
+      <div class="input-with-button">
+        <input type="text" id="create-name" placeholder="e.g. school-ripe-lemon" />
+        <button class="btn btn-secondary icon-btn" id="btn-random-lobby-name" type="button" aria-label="Generate random lobby name" title="Random name">🎲</button>
+      </div>
       <label>Password</label>
       <input type="password" id="create-password" placeholder="••••••" />
       <label>Game</label>
@@ -147,6 +150,13 @@ function bindHome() {
   };
   gameSel?.addEventListener('change', syncCreateGameUi);
   syncCreateGameUi();
+
+  getEl('btn-random-lobby-name')?.addEventListener('click', () => {
+    const el = getEl('create-name');
+    if (!el) return;
+    el.value = randomLobbyName();
+    el.focus();
+  });
 
   getEl('btn-create')?.addEventListener('click', async () => {
     const name = getEl('create-name')?.value?.trim();
@@ -997,6 +1007,22 @@ function resizeImageToDataUrl(file, maxDim) {
     };
     reader.readAsDataURL(file);
   });
+}
+
+function randomLobbyName() {
+  const nouns = [
+    'school','lemon','forest','river','castle','planet','ocean','comet','garden','canyon','island','mountain','library','station','harbor','market','temple','museum',
+    'puzzle','rocket','mirror','lantern','anchor','meadow','orchard','tunnel','bridge','valley','beacon','cottage','workshop','signal','compass','voyage','trophy',
+  ];
+  const adjs = [
+    'ripe','brisk','quiet','lucky','bright','mellow','swift','gentle','bold','calm','sunny','misty','crisp','golden','silver','cosmic','secret','playful','steady',
+    'rusty','fresh','wild','soft','sharp','glowing','hidden','smooth','amber','violet','sturdy','nimble',
+  ];
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const w1 = pick(nouns);
+  const w2 = pick(adjs);
+  const w3 = pick(nouns);
+  return `${w1}-${w2}-${w3}`.toLowerCase();
 }
 
 function getPlacements(players) {
