@@ -107,6 +107,28 @@ textarea {
   margin-bottom: 1rem;
 }
 
+select.select {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 1rem;
+}
+
+select.select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+[data-theme="dark"] select.select:focus {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
+}
+
 input:focus,
 textarea:focus {
   outline: none;
@@ -711,4 +733,35 @@ textarea {
 .game-leave-row {
   margin-top: auto;
   padding-top: 1rem;
+}
+
+.wavelength-category {
+  margin: 0.5rem 0 0.75rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.wavelength-target,
+.wavelength-clue {
+  margin: 0.25rem 0;
+}
+
+.wavelength-guesses {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.wavelength-guesses li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.wavelength-guess-num {
+  font-weight: 700;
+  color: var(--text);
 }

@@ -5,7 +5,27 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { createLobby, joinLobby, getLobby, startGame, submitAssignment, submitGuess, skipTurn, updateNotes, returnToLobby, reorderPlayers, randomizeOrder, setWordForNext, setReady, getJoinToken, redeemJoinToken } from './lobby.js';
+import {
+  createLobby,
+  joinLobby,
+  getLobby,
+  startGame,
+  submitAssignment,
+  submitGuess,
+  skipTurn,
+  updateNotes,
+  returnToLobby,
+  reorderPlayers,
+  randomizeOrder,
+  setWordForNext,
+  setReady,
+  getJoinToken,
+  redeemJoinToken,
+  submitWavelengthClue,
+  submitWavelengthGuess,
+  handleWavelengthTimeout,
+  getLobbyPhaseTimerSeconds,
+} from './lobby.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
@@ -22,17 +42,16 @@ const io = new Server(httpServer, { cors: { origin: true } });
 const socketToPlayer = new Map();
 // Per-lobby turn timer: lobbyId -> { timeoutId }
 const lobbyTurnTimers = new Map();
-const TURN_SECONDS = 60;
 
 // --- REST API ---
 
 app.post('/api/lobby', (req, res) => {
-  const { name, password, playerName } = req.body;
+  const { name, password, playerName, gameType, settings } = req.body;
   if (!name || !password || !playerName) {
     return res.status(400).json({ error: 'Name, password, and player name required' });
   }
   try {
-    const { lobby, player } = createLobby(name, password, playerName);
+    const { lobby, player } = createLobby(name, password, playerName, { gameType, settings });
     return res.json({ lobbyId: lobby.id, playerId: player.id, lobbyName: lobby.name });
   } catch (e) {
     return res.status(400).json({ error: e.message });
@@ -128,20 +147,24 @@ io.on('connection', (socket) => {
   function setLobbyTurnTimer(lobbyId) {
     clearLobbyTurnTimer(lobbyId);
     const lobby = getLobby(lobbyId);
-    if (!lobby || lobby.phase !== 'guessing') return;
-    const currentIdx = lobby.order[lobby.currentTurnIndex];
-    const currentPlayer = lobby.players[currentIdx];
-    if (!currentPlayer) return;
+    if (!lobby) return;
+    const seconds = getLobbyPhaseTimerSeconds(lobby);
+    if (!seconds) return;
     const timeoutId = setTimeout(async () => {
       lobbyTurnTimers.delete(lobbyId);
       try {
-        skipTurn(lobby, currentPlayer.id);
+        const handled = handleWavelengthTimeout(lobby);
+        if (!handled && lobby.phase === 'guessing') {
+          const currentIdx = lobby.order[lobby.currentTurnIndex];
+          const currentPlayer = lobby.players[currentIdx];
+          if (currentPlayer) skipTurn(lobby, currentPlayer.id);
+        }
         await broadcastLobbyState(lobbyId);
       } catch (_) {
         // Turn may have already advanced (e.g. player guessed); ensure next turn still has a timer
       }
       setLobbyTurnTimer(lobbyId);
-    }, TURN_SECONDS * 1000);
+    }, seconds * 1000);
     lobbyTurnTimers.set(lobbyId, { timeoutId });
   }
 
@@ -178,6 +201,32 @@ io.on('connection', (socket) => {
       await broadcastLobbyState(lobbyId);
       setLobbyTurnTimer(lobbyId);
       if (result) socket.emit('guess-result', result);
+    } catch (e) {
+      socket.emit('error', { message: e.message });
+    }
+  });
+
+  socket.on('submit-wavelength-clue', async ({ lobbyId, playerId, clueText }) => {
+    const lobby = getLobby(lobbyId);
+    if (!lobby) return socket.emit('error', { message: 'Lobby not found' });
+    try {
+      clearLobbyTurnTimer(lobbyId);
+      submitWavelengthClue(lobby, playerId, clueText);
+      await broadcastLobbyState(lobbyId);
+      setLobbyTurnTimer(lobbyId);
+    } catch (e) {
+      socket.emit('error', { message: e.message });
+    }
+  });
+
+  socket.on('submit-wavelength-guess', async ({ lobbyId, playerId, guess }) => {
+    const lobby = getLobby(lobbyId);
+    if (!lobby) return socket.emit('error', { message: 'Lobby not found' });
+    try {
+      clearLobbyTurnTimer(lobbyId);
+      submitWavelengthGuess(lobby, playerId, guess);
+      await broadcastLobbyState(lobbyId);
+      setLobbyTurnTimer(lobbyId);
     } catch (e) {
       socket.emit('error', { message: e.message });
     }

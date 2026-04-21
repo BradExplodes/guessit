@@ -11,6 +11,7 @@ let turnCountdownIntervalId = null;
 let lastCountdownSecs = -1;
 let gameNotesLocal = null;
 let pendingJoinToken = null;
+let createGameType = 'guessit';
 
 function getEl(id) {
   return document.getElementById(id);
@@ -52,7 +53,12 @@ function render() {
     gameNotesLocal = null;
   }
   app.innerHTML = renderLobby();
-  const isGameScreen = state && (state.phase === 'guessing' || state.phase === 'finished');
+  const isGameScreen = state && (
+    state.phase === 'guessing' ||
+    state.phase === 'wavelength_clue' ||
+    state.phase === 'wavelength_guessing' ||
+    state.phase === 'finished'
+  );
   app.classList.toggle('game-screen', !!isGameScreen);
   bindLobby();
   if (hadNotesFocus) getEl('notes-field')?.focus();
@@ -61,7 +67,7 @@ function render() {
 function renderHome() {
   if (pendingJoinToken) {
     return `
-    <h1>Guess It!</h1>
+    <h1>Minigames</h1>
     <p class="subtitle">You opened an invite link. Enter your name to join the lobby.</p>
     <div class="card">
       <h2 style="margin:0 0 1rem; font-size:1.1rem;">Join with invite link</h2>
@@ -74,8 +80,8 @@ function renderHome() {
   `;
   }
   return `
-    <h1>Guess It!</h1>
-    <p class="subtitle">Create or join a lobby to play. Use Discord to ask each other questions!</p>
+    <h1>Minigames</h1>
+    <p class="subtitle">Create or join a lobby to play. Use Discord for voice/chat if you want.</p>
     <div class="card">
       <h2 style="margin:0 0 1rem; font-size:1.1rem;">Create lobby</h2>
       <div id="create-error" class="error" style="display:none;"></div>
@@ -83,6 +89,15 @@ function renderHome() {
       <input type="text" id="create-name" placeholder="e.g. Saturday Night" />
       <label>Password</label>
       <input type="password" id="create-password" placeholder="••••••" />
+      <label>Game</label>
+      <select id="create-game" class="select">
+        <option value="guessit">Guess It</option>
+        <option value="wavelength">Wavelength</option>
+      </select>
+      <div id="wavelength-settings" style="display:none;">
+        <label>Points to win</label>
+        <input type="text" id="create-points-to-win" inputmode="numeric" placeholder="e.g. 10" value="10" />
+      </div>
       <label>Your name</label>
       <input type="text" id="create-player" placeholder="How others see you" />
       <button class="btn" id="btn-create">Create & join</button>
@@ -103,6 +118,16 @@ function renderHome() {
 }
 
 function bindHome() {
+  const gameSel = getEl('create-game');
+  const wavelengthSettings = getEl('wavelength-settings');
+  const syncCreateGameUi = () => {
+    const v = gameSel?.value || 'guessit';
+    createGameType = v;
+    if (wavelengthSettings) wavelengthSettings.style.display = v === 'wavelength' ? 'block' : 'none';
+  };
+  gameSel?.addEventListener('change', syncCreateGameUi);
+  syncCreateGameUi();
+
   getEl('btn-create')?.addEventListener('click', async () => {
     const name = getEl('create-name')?.value?.trim();
     const password = getEl('create-password')?.value;
@@ -115,10 +140,13 @@ function bindHome() {
       return;
     }
     try {
+      const gameType = (getEl('create-game')?.value || 'guessit').trim();
+      const pointsToWin = getEl('create-points-to-win')?.value?.trim();
+      const settings = gameType === 'wavelength' ? { pointsToWin } : undefined;
       const res = await fetch(`${API}/lobby`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, password, playerName }),
+        body: JSON.stringify({ name, password, playerName, gameType, settings }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create');
@@ -286,40 +314,70 @@ function renderLobby() {
     const isHost = state.isHost;
     const allReady = (state.players || []).every(p => p.ready);
     const me = state.players?.find(p => p.isYou);
-    main = `
-      <p class="lobby-name-display">Lobby: <strong>${escapeHtml(state.name)}</strong></p>
-      ${me && state.nextPlayerForWord && (state.players?.length || 0) >= 2 ? `
-      <div class="character-section card">
-        <label>Targeting <strong>${escapeHtml(state.nextPlayerForWord.playerName)}</strong></label>
-        <p class="subtitle" style="margin:0 0 0.5rem; font-size:0.85rem;">The word that will go on their forehead. You can change this until you ready up.</p>
-        <div class="character-row">
-          <input type="text" id="word-for-next-input" placeholder="e.g. Einstein" value="${escapeHtml(state.myWordForNext || '')}" />
-          <button class="btn ${me.ready ? 'btn-secondary' : ''}" id="btn-ready">${me.ready ? 'Unready' : 'Ready'}</button>
+
+    if (state.gameType === 'wavelength') {
+      main = `
+        <p class="lobby-name-display">Lobby: <strong>${escapeHtml(state.name)}</strong></p>
+        <p class="subtitle" style="margin-bottom:0.75rem;">Game: <strong>Wavelength</strong> • First to <strong>${escapeHtml(String(state.settings?.pointsToWin ?? ''))}</strong> points wins.</p>
+        <div class="character-section card">
+          <label>Ready status</label>
+          <div class="character-row">
+            <button class="btn ${me?.ready ? 'btn-secondary' : ''}" id="btn-ready">${me?.ready ? 'Unready' : 'Ready'}</button>
+          </div>
         </div>
-      </div>
-      ` : ''}
-      ${isHost ? '<p class="subtitle" style="margin-bottom:0.5rem; font-size:0.85rem;">Order = who assigns for whom (first assigns for second, etc). Drag to reorder.</p>' : ''}
-      <ul class="players-list ${isHost ? 'players-list-draggable' : ''}" id="waiting-players-list">
-        ${(state.players || []).map((p, idx) => {
-          const n = state.players.length;
-          const nextPlayer = n >= 2 ? state.players[(idx + 1) % n] : null;
-          const targetLabel = nextPlayer ? `Targeting ${escapeHtml(nextPlayer.name)}` : '';
-          return `
-          <li class="${p.isYou ? 'is-you' : ''} ${isHost ? 'draggable' : ''}" data-player-id="${escapeHtml(p.id)}" ${isHost ? 'draggable="true"' : ''}>
-            ${isHost ? '<span class="drag-handle" aria-hidden="true">⋮⋮</span>' : ''}
-            <span>${escapeHtml(p.name)} ${p.isYou ? ' (you)' : ''}</span>
-            ${targetLabel ? `<span class="player-target">${targetLabel}</span>` : ''}
-            <span class="ready-badge ${p.ready ? 'ready' : ''}">${p.ready ? '✓ Ready' : 'Not ready'}</span>
-          </li>
-        `; }).join('')}
-      </ul>
-      ${isHost ? '<div class="lobby-order-actions"><button class="btn btn-secondary" id="btn-random-order">Random order</button></div>' : ''}
-      ${state.canStart ? '<button class="btn" id="btn-start">Start game</button>' : allReady ? '<p class="subtitle">Waiting for host to start.</p>' : '<p class="subtitle">Everyone must ready up before the host can start.</p>'}
-      <p class="subtitle" style="margin-top:1rem; font-size:0.85rem;"><strong>Multiplayer:</strong> Everyone must open the same game link. Share an invite link so friends can join with one click (they only enter their name).</p>
-      <button class="btn btn-secondary" id="btn-copy-link">Copy game link</button>
-      <button class="btn btn-secondary" id="btn-copy-join-link">Copy invite link</button>
-      ${state.canStart && hostPassword ? ` <button class="btn btn-secondary" id="btn-copy-invite">Copy lobby name &amp; password</button>` : ''}
-    `;
+        ${isHost ? '<p class="subtitle" style="margin-bottom:0.5rem; font-size:0.85rem;">Drag to reorder turn order.</p>' : ''}
+        <ul class="players-list ${isHost ? 'players-list-draggable' : ''}" id="waiting-players-list">
+          ${(state.players || []).map((p) => `
+            <li class="${p.isYou ? 'is-you' : ''} ${isHost ? 'draggable' : ''}" data-player-id="${escapeHtml(p.id)}" ${isHost ? 'draggable="true"' : ''}>
+              ${isHost ? '<span class="drag-handle" aria-hidden="true">⋮⋮</span>' : ''}
+              <span>${escapeHtml(p.name)} ${p.isYou ? ' (you)' : ''}</span>
+              <span class="ready-badge ${p.ready ? 'ready' : ''}">${p.ready ? '✓ Ready' : 'Not ready'}</span>
+            </li>
+          `).join('')}
+        </ul>
+        ${isHost ? '<div class="lobby-order-actions"><button class="btn btn-secondary" id="btn-random-order">Random order</button></div>' : ''}
+        ${state.canStart ? '<button class="btn" id="btn-start">Start game</button>' : allReady ? '<p class="subtitle">Waiting for host to start.</p>' : '<p class="subtitle">Everyone must ready up before the host can start.</p>'}
+        <p class="subtitle" style="margin-top:1rem; font-size:0.85rem;"><strong>Multiplayer:</strong> Everyone must open the same game link. Share an invite link so friends can join with one click (they only enter their name).</p>
+        <button class="btn btn-secondary" id="btn-copy-link">Copy game link</button>
+        <button class="btn btn-secondary" id="btn-copy-join-link">Copy invite link</button>
+        ${state.canStart && hostPassword ? ` <button class="btn btn-secondary" id="btn-copy-invite">Copy lobby name &amp; password</button>` : ''}
+      `;
+    } else {
+      main = `
+        <p class="lobby-name-display">Lobby: <strong>${escapeHtml(state.name)}</strong></p>
+        ${me && state.nextPlayerForWord && (state.players?.length || 0) >= 2 ? `
+        <div class="character-section card">
+          <label>Targeting <strong>${escapeHtml(state.nextPlayerForWord.playerName)}</strong></label>
+          <p class="subtitle" style="margin:0 0 0.5rem; font-size:0.85rem;">The word that will go on their forehead. You can change this until you ready up.</p>
+          <div class="character-row">
+            <input type="text" id="word-for-next-input" placeholder="e.g. Einstein" value="${escapeHtml(state.myWordForNext || '')}" />
+            <button class="btn ${me.ready ? 'btn-secondary' : ''}" id="btn-ready">${me.ready ? 'Unready' : 'Ready'}</button>
+          </div>
+        </div>
+        ` : ''}
+        ${isHost ? '<p class="subtitle" style="margin-bottom:0.5rem; font-size:0.85rem;">Order = who assigns for whom (first assigns for second, etc). Drag to reorder.</p>' : ''}
+        <ul class="players-list ${isHost ? 'players-list-draggable' : ''}" id="waiting-players-list">
+          ${(state.players || []).map((p, idx) => {
+            const n = state.players.length;
+            const nextPlayer = n >= 2 ? state.players[(idx + 1) % n] : null;
+            const targetLabel = nextPlayer ? `Targeting ${escapeHtml(nextPlayer.name)}` : '';
+            return `
+            <li class="${p.isYou ? 'is-you' : ''} ${isHost ? 'draggable' : ''}" data-player-id="${escapeHtml(p.id)}" ${isHost ? 'draggable="true"' : ''}>
+              ${isHost ? '<span class="drag-handle" aria-hidden="true">⋮⋮</span>' : ''}
+              <span>${escapeHtml(p.name)} ${p.isYou ? ' (you)' : ''}</span>
+              ${targetLabel ? `<span class="player-target">${targetLabel}</span>` : ''}
+              <span class="ready-badge ${p.ready ? 'ready' : ''}">${p.ready ? '✓ Ready' : 'Not ready'}</span>
+            </li>
+          `; }).join('')}
+        </ul>
+        ${isHost ? '<div class="lobby-order-actions"><button class="btn btn-secondary" id="btn-random-order">Random order</button></div>' : ''}
+        ${state.canStart ? '<button class="btn" id="btn-start">Start game</button>' : allReady ? '<p class="subtitle">Waiting for host to start.</p>' : '<p class="subtitle">Everyone must ready up before the host can start.</p>'}
+        <p class="subtitle" style="margin-top:1rem; font-size:0.85rem;"><strong>Multiplayer:</strong> Everyone must open the same game link. Share an invite link so friends can join with one click (they only enter their name).</p>
+        <button class="btn btn-secondary" id="btn-copy-link">Copy game link</button>
+        <button class="btn btn-secondary" id="btn-copy-join-link">Copy invite link</button>
+        ${state.canStart && hostPassword ? ` <button class="btn btn-secondary" id="btn-copy-invite">Copy lobby name &amp; password</button>` : ''}
+      `;
+    }
   } else if (phase === 'assigning') {
     const target = state.assigningTarget;
     main = `
@@ -335,6 +393,8 @@ function renderLobby() {
         `
         : '<p class="subtitle">You’ve submitted your word. Waiting for others…</p>'}
     `;
+  } else if (state.gameType === 'wavelength' && (phase === 'wavelength_clue' || phase === 'wavelength_guessing' || phase === 'finished')) {
+    main = renderWavelengthLayout();
   } else if (phase === 'guessing' || phase === 'finished') {
     const isMyTurn = me?.isCurrentTurn;
     const placements = getPlacements(state.players || []);
@@ -374,12 +434,17 @@ function renderLobby() {
     main = '<p class="subtitle">Loading…</p>';
   }
 
-  const isGameScreen = state && (state.phase === 'guessing' || state.phase === 'finished');
+  const isGameScreen = state && (
+    state.phase === 'guessing' ||
+    state.phase === 'wavelength_clue' ||
+    state.phase === 'wavelength_guessing' ||
+    state.phase === 'finished'
+  );
   if (isGameScreen) {
     return main;
   }
   return `
-    <h1>Guess It!</h1>
+    <h1>Minigames</h1>
     <div class="card">
       ${main}
     </div>
@@ -393,7 +458,7 @@ function bindLobby() {
     turnCountdownIntervalId = null;
   }
   const countdownEl = getEl('turn-countdown');
-  if (countdownEl && state?.turnStartedAt && state?.phase === 'guessing') {
+  if (countdownEl && state?.turnStartedAt && (state?.phase === 'guessing' || state?.phase === 'wavelength_clue' || state?.phase === 'wavelength_guessing')) {
     lastCountdownSecs = -1;
     turnCountdownIntervalId = setInterval(() => {
       const el = getEl('turn-countdown');
@@ -402,9 +467,16 @@ function bindLobby() {
         turnCountdownIntervalId = null;
         return;
       }
-      const secs = Math.max(0, 60 - Math.floor((Date.now() - state.turnStartedAt) / 1000));
+      const total = state.phase === 'guessing'
+        ? 60
+        : state.phase === 'wavelength_clue'
+          ? (state.wavelength?.clueSeconds ?? 90)
+          : state.phase === 'wavelength_guessing'
+            ? (state.wavelength?.guessSeconds ?? 45)
+            : 0;
+      const secs = Math.max(0, total - Math.floor((Date.now() - state.turnStartedAt) / 1000));
       el.textContent = secs;
-      if (secs === 0 && lastCountdownSecs !== 0 && state?.currentTurnPlayerId === playerId) {
+      if (state.gameType === 'guessit' && secs === 0 && lastCountdownSecs !== 0 && state?.currentTurnPlayerId === playerId) {
         lastCountdownSecs = 0;
         socket?.emit('skip-turn', { lobbyId, playerId });
       } else {
@@ -522,6 +594,30 @@ function bindLobby() {
     localStorage.removeItem('guessit_playerId');
     render();
   });
+
+  // Wavelength bindings
+  getEl('btn-wavelength-submit-clue')?.addEventListener('click', () => {
+    const clueText = getEl('wavelength-clue-input')?.value ?? '';
+    socket?.emit('submit-wavelength-clue', { lobbyId, playerId, clueText });
+  });
+  getEl('wavelength-clue-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      getEl('btn-wavelength-submit-clue')?.click();
+    }
+  });
+  const submitWavelengthGuessFromForm = () => {
+    const guess = getEl('wavelength-guess-input')?.value?.trim();
+    if (!guess) return;
+    socket?.emit('submit-wavelength-guess', { lobbyId, playerId, guess });
+  };
+  getEl('btn-wavelength-guess')?.addEventListener('click', submitWavelengthGuessFromForm);
+  getEl('wavelength-guess-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submitWavelengthGuessFromForm();
+    }
+  });
 }
 
 function escapeHtml(s) {
@@ -624,6 +720,149 @@ function renderGameLayout(opts) {
         <div class="game-leave-row">
           <button class="btn btn-secondary" id="btn-leave">Leave lobby</button>
           ${phase === 'finished' && isHost ? '<button class="btn" id="btn-return-lobby">Return to lobby</button>' : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderWavelengthLayout() {
+  const me = state.players?.find(p => p.isYou);
+  const phase = state.phase;
+  const w = state.wavelength;
+  const currentPlayer = state.players?.find(p => p.id === state.currentTurnPlayerId);
+  const isClueGiver = !!(me && currentPlayer && me.id === currentPlayer.id);
+  const pointsToWin = state.settings?.pointsToWin ?? 10;
+  const scores = [...(state.players || [])].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+
+  const total = phase === 'wavelength_clue' ? (w?.clueSeconds ?? 90) : phase === 'wavelength_guessing' ? (w?.guessSeconds ?? 45) : 0;
+  const secsLeft = state.turnStartedAt && total
+    ? Math.max(0, total - Math.floor((Date.now() - state.turnStartedAt) / 1000))
+    : null;
+
+  const category = w ? `${escapeHtml(w.categoryLeft)}  ↔  ${escapeHtml(w.categoryRight)}` : '';
+  const targetBlock = w?.target != null
+    ? `<p class="wavelength-target">Target: <strong>${escapeHtml(String(w.target))}</strong> <span class="subtitle" style="margin:0; font-size:0.85rem;">(1–20)</span></p>`
+    : '';
+  const clueBlock = (phase !== 'wavelength_clue' && w?.clueText != null)
+    ? `<p class="wavelength-clue"><strong>Clue:</strong> ${escapeHtml(w.clueText || '(no clue)')}</p>`
+    : '';
+
+  const alreadyGuessed = w?.guesses && playerId ? (w.guesses[playerId] != null) : false;
+  const guessers = (state.players || []).filter(p => p.id !== state.currentTurnPlayerId);
+  const guessesList = (phase !== 'wavelength_clue' && w?.guesses)
+    ? `<ul class="wavelength-guesses">
+        ${guessers.map(p => {
+          const g = w.guesses[p.id];
+          const show = (phase === 'wavelength_guessing') ? (g != null ? String(g) : '—') : (g != null ? String(g) : '—');
+          return `<li><span>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</span><span class="wavelength-guess-num">${escapeHtml(show)}</span></li>`;
+        }).join('')}
+      </ul>`
+    : '';
+
+  const lastRound = w?.lastRound;
+  const lastRoundBlock = lastRound
+    ? (() => {
+        const clueGiverName = state.players?.find(p => p.id === lastRound.clueGiverId)?.name || 'Unknown';
+        const winners = (lastRound.winners || []).map(pid => state.players?.find(p => p.id === pid)?.name).filter(Boolean);
+        const winnersLabel = winners.length ? winners.map(escapeHtml).join(', ') : 'No one';
+        const distLabel = lastRound.bestDistance != null ? ` (closest by ${lastRound.bestDistance})` : '';
+        return `
+          <div class="card wavelength-last-round">
+            <h3 style="margin:0 0 0.5rem; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Last round</h3>
+            <p style="margin:0.25rem 0;"><strong>Clue giver:</strong> ${escapeHtml(clueGiverName)}</p>
+            <p style="margin:0.25rem 0;"><strong>Target:</strong> ${escapeHtml(String(lastRound.target))}</p>
+            <p style="margin:0.25rem 0;"><strong>Clue:</strong> ${escapeHtml(lastRound.clueText || '(no clue)')}</p>
+            <p style="margin:0.25rem 0;"><strong>Point:</strong> ${winnersLabel}${distLabel}</p>
+          </div>
+        `;
+      })()
+    : '';
+
+  let center = '';
+  if (phase === 'wavelength_clue') {
+    center = isClueGiver
+      ? `
+        <p class="turn-label">Your turn</p>
+        <p class="wavelength-category">${category}</p>
+        ${targetBlock}
+        ${secsLeft != null ? `<p class="turn-timer">Time left: <strong id="turn-countdown">${secsLeft}</strong>s</p>` : ''}
+        <div class="guess-form center-guess-form">
+          <input type="text" id="wavelength-clue-input" placeholder="Type your clue…" autocomplete="off" />
+          <div class="center-guess-buttons">
+            <button class="btn" id="btn-wavelength-submit-clue">Reveal</button>
+          </div>
+        </div>
+      `
+      : `
+        <span class="turn-arrow"></span>
+        <p class="turn-label">${escapeHtml(currentPlayer?.name || 'Someone')}'s turn</p>
+        <p class="wavelength-category">${category}</p>
+        ${secsLeft != null ? `<p class="turn-timer">Clue timer: <strong id="turn-countdown">${secsLeft}</strong>s</p>` : ''}
+        <p class="subtitle" style="margin:0.75rem 0 0;">Waiting for the clue…</p>
+      `;
+  } else if (phase === 'wavelength_guessing') {
+    const canGuess = !isClueGiver && !alreadyGuessed;
+    center = `
+      <p class="turn-label">Guess the number</p>
+      <p class="wavelength-category">${category}</p>
+      ${targetBlock}
+      ${clueBlock}
+      ${secsLeft != null ? `<p class="turn-timer">Time left: <strong id="turn-countdown">${secsLeft}</strong>s</p>` : ''}
+      ${isClueGiver
+        ? `<p class="subtitle" style="margin:0.75rem 0 0;">You’re the clue giver — waiting for guesses.</p>`
+        : `
+          <div class="guess-form center-guess-form">
+            <input type="text" id="wavelength-guess-input" inputmode="numeric" placeholder="1–20" ${canGuess ? '' : 'disabled'} />
+            <div class="center-guess-buttons">
+              <button class="btn" id="btn-wavelength-guess" ${canGuess ? '' : 'disabled'}>${alreadyGuessed ? 'Guessed' : 'Submit'}</button>
+            </div>
+          </div>
+        `}
+    `;
+  } else if (phase === 'finished') {
+    const winners = scores.filter(p => (p.score ?? 0) >= pointsToWin);
+    const winnerNames = winners.length ? winners.map(p => escapeHtml(p.name)).join(', ') : 'Winner';
+    center = `
+      <p class="turn-label">Game over</p>
+      <p class="subtitle" style="margin:0.25rem 0 0.75rem;">Winner: <strong>${winnerNames}</strong></p>
+      ${lastRoundBlock ? '' : `<p class="subtitle" style="margin:0;">Thanks for playing.</p>`}
+    `;
+  }
+
+  const playerDots = (state.players || []).map(p => `
+    <div class="player-dot ${p.isCurrentTurn ? 'active' : 'inactive'} ${p.isYou ? 'you' : ''}" style="position:static; width:auto; height:auto; border-radius:var(--radius-sm); padding:0.5rem 0.75rem; box-shadow:none; margin-bottom:0.4rem;">
+      <div style="display:flex; gap:0.5rem; width:100%; align-items:center; justify-content:space-between;">
+        <span>${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}</span>
+        <span class="badge" style="background:rgba(37,99,235,0.12); color:var(--accent);"> ${escapeHtml(String(p.score ?? 0))} </span>
+      </div>
+    </div>
+  `).join('');
+
+  return `
+    <div class="game-layout">
+      <div class="game-left">
+        <div class="player-circle" style="width:min(min(90vw,520px),100%);">
+          <div class="player-circle-center" style="max-width:360px;">
+            ${center}
+          </div>
+        </div>
+      </div>
+      <div class="game-right">
+        <div class="game-info-panel card">
+          <h3>Wavelength</h3>
+          <p class="lobby-name-display" style="margin-bottom:0.5rem;">Lobby: <strong>${escapeHtml(state.name || '')}</strong></p>
+          <p class="subtitle" style="margin:0 0 0.75rem;">First to <strong>${escapeHtml(String(pointsToWin))}</strong> points.</p>
+          <div class="wavelength-scoreboard">
+            <h4 style="margin:0 0 0.5rem; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Scores</h4>
+            <div>${playerDots}</div>
+          </div>
+          ${phase === 'wavelength_guessing' ? `<div class="wavelength-guesses-wrap"><h4 style="margin:0.75rem 0 0.5rem; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Guesses</h4>${guessesList || '<p class="subtitle" style="margin:0;">No guesses yet.</p>'}</div>` : ''}
+        </div>
+        ${lastRoundBlock}
+        <div class="game-leave-row">
+          <button class="btn btn-secondary" id="btn-leave">Leave lobby</button>
+          ${phase === 'finished' && state.isHost ? '<button class="btn" id="btn-return-lobby">Return to lobby</button>' : ''}
         </div>
       </div>
     </div>
