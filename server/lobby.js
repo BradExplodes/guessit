@@ -7,6 +7,8 @@ const GAME_TYPES = /** @type {const} */ ({
   WAVELENGTH: 'wavelength',
 });
 
+const MAX_GUESSIT_IMAGE_DATA_URL_CHARS = 600_000; // ~450KB base64 payload + header
+
 const DEFAULT_WAVELENGTH_POINTS_TO_WIN = 10;
 const DEFAULT_WAVELENGTH_CLUE_SECONDS = 90;
 const DEFAULT_WAVELENGTH_GUESS_SECONDS = 45;
@@ -78,10 +80,13 @@ function createLobby(name, password, playerName, opts = {}) {
   const player = {
     id: nanoid(8),
     name: playerName,
+    disconnectedAt: null,
     wordForNext: '',
+    imageForNext: null,
     ready: false,
     // Guess It fields
     assignedWord: null,
+    assignedImage: null,
     hasWon: false,
     roundsToWin: null,
     notes: '',
@@ -120,10 +125,13 @@ function joinLobby(lobbyName, password, playerName) {
   const player = {
     id: nanoid(8),
     name: playerName.trim(),
+    disconnectedAt: null,
     wordForNext: '',
+    imageForNext: null,
     ready: false,
     // Guess It fields
     assignedWord: null,
+    assignedImage: null,
     hasWon: false,
     roundsToWin: null,
     notes: '',
@@ -141,6 +149,22 @@ function setWordForNext(lobby, playerId, word) {
   const player = lobby.players.find(p => p.id === playerId);
   if (!player) throw new Error('Player not found');
   player.wordForNext = String(word ?? '').trim();
+}
+
+function setImageForNext(lobby, playerId, imageDataUrl) {
+  if (lobby.phase !== 'waiting') throw new Error('Can only set image in lobby');
+  if (lobby.gameType !== GAME_TYPES.GUESSIT) throw new Error('Not used in this game');
+  const player = lobby.players.find(p => p.id === playerId);
+  if (!player) throw new Error('Player not found');
+  if (!imageDataUrl) {
+    player.imageForNext = null;
+    return;
+  }
+  const s = String(imageDataUrl);
+  const okPrefix = s.startsWith('data:image/png;base64,') || s.startsWith('data:image/jpeg;base64,');
+  if (!okPrefix) throw new Error('Image must be a PNG or JPEG');
+  if (s.length > MAX_GUESSIT_IMAGE_DATA_URL_CHARS) throw new Error('Image is too large');
+  player.imageForNext = s;
 }
 
 function setReady(lobby, playerId, ready) {
@@ -186,10 +210,15 @@ function startGame(lobby, playerId) {
     for (let i = 0; i < n; i++) {
       const nextIdx = (i + 1) % n;
       const nextPlayer = lobby.players[nextIdx];
-      lobby.assignments[nextPlayer.id] = { word: String(lobby.players[i].wordForNext || '').trim(), fromPlayerId: lobby.players[i].id };
+      lobby.assignments[nextPlayer.id] = {
+        word: String(lobby.players[i].wordForNext || '').trim(),
+        image: lobby.players[i].imageForNext ?? null,
+        fromPlayerId: lobby.players[i].id,
+      };
     }
     lobby.players.forEach(p => {
       p.assignedWord = lobby.assignments[p.id]?.word ?? null;
+      p.assignedImage = lobby.assignments[p.id]?.image ?? null;
     });
     lobby.phase = 'guessing';
     lobby.currentTurnIndex = 0;
@@ -222,6 +251,7 @@ function submitAssignment(lobby, playerId, word) {
   if (Object.keys(lobby.assignments).length === lobby.players.length) {
     lobby.players.forEach(p => {
       p.assignedWord = lobby.assignments[p.id]?.word ?? null;
+      p.assignedImage = lobby.assignments[p.id]?.image ?? null;
     });
     lobby.phase = 'guessing';
     lobby.currentTurnIndex = 0;
@@ -309,7 +339,6 @@ function toClient(lobby, forPlayerId) {
       round: w.round,
       categoryLeft: w.categoryLeft,
       categoryRight: w.categoryRight,
-      clueText: targetVisible ? (w.clueText ?? '') : null,
       clueText: lobby.phase !== 'wavelength_clue' ? (w.clueText ?? '') : null,
       // Keep the target secret from guessers; they learn it after the round (in lastRound).
       target: isClueGiver ? w.target : null,
@@ -331,6 +360,7 @@ function toClient(lobby, forPlayerId) {
       id: p.id,
       name: p.name,
       wordForNext: p.wordForNext ?? '',
+      imageForNext: undefined,
       ready: p.ready ?? false,
       hasWon: p.hasWon,
       roundsToWin: p.roundsToWin,
@@ -339,6 +369,7 @@ function toClient(lobby, forPlayerId) {
       isYou: p.id === forPlayerId,
       isCurrentTurn: currentPlayer && p.id === currentPlayer.id,
       word: p.id !== forPlayerId ? (p.assignedWord ?? null) : undefined,
+      image: p.id !== forPlayerId ? (p.assignedImage ?? null) : undefined,
     })),
     currentTurnPlayerId: currentPlayer?.id ?? null,
     myNotes: me?.notes ?? '',
@@ -367,6 +398,7 @@ function toClient(lobby, forPlayerId) {
       return next ? { playerId: next.id, playerName: next.name } : null;
     })(),
     myWordForNext: me?.wordForNext ?? '',
+    myImageForNext: me?.imageForNext ?? null,
     canStart: lobby.phase === 'waiting' && lobby.players.length >= 2 && lobby.players.every(p => p.ready) && lobby.creatorId === forPlayerId,
     allAssignmentsIn: lobby.phase === 'assigning' && Object.keys(lobby.assignments).length === lobby.players.length,
     isHost: lobby.creatorId === forPlayerId,
@@ -387,12 +419,14 @@ function returnToLobby(lobby, playerId) {
   lobby.currentTurnIndex = 0;
   lobby.players.forEach(p => {
     p.assignedWord = null;
+    p.assignedImage = null;
     p.hasWon = false;
     p.roundsToWin = null;
     p.notes = '';
     p.roundCount = 0;
     p.ready = false;
     p.score = 0;
+    p.imageForNext = null;
   });
   lobby.lastWrongGuess = null;
   lobby.currentTurnWrongGuesses = [];
@@ -590,4 +624,109 @@ export {
   submitWavelengthGuess,
   handleWavelengthTimeout,
   getLobbyPhaseTimerSeconds,
+  removePlayer,
+  markPlayerConnected,
+  markPlayerDisconnected,
+  setImageForNext,
 };
+
+function markPlayerConnected(lobby, playerId) {
+  const p = lobby.players.find(x => x.id === playerId);
+  if (p) p.disconnectedAt = null;
+}
+
+function markPlayerDisconnected(lobby, playerId) {
+  const p = lobby.players.find(x => x.id === playerId);
+  if (p && !p.disconnectedAt) p.disconnectedAt = Date.now();
+}
+
+function resetLobbyBecauseNotEnoughPlayers(lobby) {
+  lobby.phase = 'waiting';
+  lobby.order = [];
+  lobby.assignments = {};
+  lobby.currentTurnIndex = 0;
+  lobby.turnStartedAt = null;
+  lobby.lastWrongGuess = null;
+  lobby.currentTurnWrongGuesses = [];
+  lobby.guessHistory = [];
+  lobby.wavelength = null;
+  lobby.players.forEach(p => {
+    p.wordForNext = '';
+    p.imageForNext = null;
+    p.ready = false;
+    p.assignedWord = null;
+    p.assignedImage = null;
+    p.hasWon = false;
+    p.roundsToWin = null;
+    p.notes = '';
+    p.roundCount = 0;
+    p.score = 0;
+  });
+}
+
+function removePlayer(lobby, playerId) {
+  const idx = lobby.players.findIndex(p => p.id === playerId);
+  if (idx === -1) return;
+  const removed = lobby.players[idx];
+  const oldPlayers = lobby.players;
+  const oldOrderIds = (lobby.order && lobby.order.length)
+    ? lobby.order.map(i => oldPlayers[i]).filter(Boolean).map(p => p.id)
+    : oldPlayers.map(p => p.id);
+  const currentTurnPlayerId = (() => {
+    if (!lobby.order || !lobby.order.length) return null;
+    const ci = lobby.order[lobby.currentTurnIndex];
+    return oldPlayers[ci]?.id ?? null;
+  })();
+
+  // Remove player
+  lobby.players = oldPlayers.filter(p => p.id !== playerId);
+
+  // Host migration if needed
+  if (lobby.creatorId === playerId) {
+    lobby.creatorId = lobby.players[0]?.id ?? null;
+  }
+
+  // Remove game-specific state keyed by playerId
+  if (lobby.assignments) {
+    delete lobby.assignments[playerId];
+  }
+  if (lobby.wavelength?.guesses) {
+    delete lobby.wavelength.guesses[playerId];
+  }
+
+  // If game can't continue, reset to lobby
+  if (lobby.players.length < 2) {
+    resetLobbyBecauseNotEnoughPlayers(lobby);
+    return;
+  }
+
+  // Rebuild order preserving prior relative order
+  const newOrderIds = oldOrderIds.filter(id => id !== playerId);
+  lobby.order = newOrderIds
+    .map(id => lobby.players.findIndex(p => p.id === id))
+    .filter(i => i >= 0);
+  if (!lobby.order.length) lobby.order = lobby.players.map((_, i) => i);
+
+  // Fix current turn pointer
+  if (lobby.phase === 'guessing' || String(lobby.phase || '').startsWith('wavelength_') || lobby.phase === 'finished') {
+    if (currentTurnPlayerId && currentTurnPlayerId !== playerId) {
+      const newTurnIdx = lobby.order.findIndex(i => lobby.players[i]?.id === currentTurnPlayerId);
+      lobby.currentTurnIndex = newTurnIdx >= 0 ? newTurnIdx : 0;
+    } else {
+      // Current player left: keep same index (now points to next player in order) and restart timer
+      lobby.currentTurnIndex = lobby.currentTurnIndex % lobby.order.length;
+      lobby.turnStartedAt = Date.now();
+      if (lobby.gameType === GAME_TYPES.WAVELENGTH) {
+        // If clue giver left mid-round, start a fresh round for the new current player.
+        if (lobby.phase === 'wavelength_clue' || lobby.phase === 'wavelength_guessing') {
+          startNextWavelengthRound(lobby);
+        }
+      }
+    }
+  }
+
+  // If someone left during Guess It and everyone already won, keep finished.
+  if (lobby.gameType === GAME_TYPES.GUESSIT && lobby.phase === 'guessing') {
+    if (lobby.players.every(p => p.hasWon)) lobby.phase = 'finished';
+  }
+}

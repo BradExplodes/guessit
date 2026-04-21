@@ -25,6 +25,10 @@ import {
   submitWavelengthGuess,
   handleWavelengthTimeout,
   getLobbyPhaseTimerSeconds,
+  removePlayer,
+  markPlayerConnected,
+  markPlayerDisconnected,
+  setImageForNext,
 } from './lobby.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -42,6 +46,9 @@ const io = new Server(httpServer, { cors: { origin: true } });
 const socketToPlayer = new Map();
 // Per-lobby turn timer: lobbyId -> { timeoutId }
 const lobbyTurnTimers = new Map();
+// Disconnect grace removal: `${lobbyId}:${playerId}` -> timeoutId
+const lobbyDisconnectTimers = new Map();
+const DISCONNECT_GRACE_MS = 15000;
 
 // --- REST API ---
 
@@ -123,6 +130,11 @@ io.on('connection', (socket) => {
     if (!player) return socket.emit('error', { message: 'Player not found' });
     socket.join(lobbyId);
     socketToPlayer.set(socket.id, { lobbyId, playerId });
+    markPlayerConnected(lobby, playerId);
+    const key = `${lobbyId}:${playerId}`;
+    const t = lobbyDisconnectTimers.get(key);
+    if (t) clearTimeout(t);
+    lobbyDisconnectTimers.delete(key);
     await broadcastLobbyState(lobbyId);
   });
 
@@ -167,6 +179,19 @@ io.on('connection', (socket) => {
     }, seconds * 1000);
     lobbyTurnTimers.set(lobbyId, { timeoutId });
   }
+
+  socket.on('leave-lobby', async ({ lobbyId, playerId }) => {
+    const lobby = getLobby(lobbyId);
+    if (!lobby) return;
+    try {
+      clearLobbyTurnTimer(lobbyId);
+      removePlayer(lobby, playerId);
+      await broadcastLobbyState(lobbyId);
+      setLobbyTurnTimer(lobbyId);
+    } catch (e) {
+      socket.emit('error', { message: e.message });
+    }
+  });
 
   socket.on('start-game', async ({ lobbyId, playerId }) => {
     const lobby = getLobby(lobbyId);
@@ -290,6 +315,17 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('set-image-for-next', async ({ lobbyId, playerId, imageDataUrl }) => {
+    const lobby = getLobby(lobbyId);
+    if (!lobby) return socket.emit('error', { message: 'Lobby not found' });
+    try {
+      setImageForNext(lobby, playerId, imageDataUrl);
+      await broadcastLobbyState(lobbyId);
+    } catch (e) {
+      socket.emit('error', { message: e.message });
+    }
+  });
+
   socket.on('set-ready', async ({ lobbyId, playerId, ready }) => {
     const lobby = getLobby(lobbyId);
     if (!lobby) return socket.emit('error', { message: 'Lobby not found' });
@@ -309,7 +345,29 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    const info = socketToPlayer.get(socket.id);
     socketToPlayer.delete(socket.id);
+    if (!info) return;
+    const { lobbyId, playerId } = info;
+    const lobby = getLobby(lobbyId);
+    if (!lobby) return;
+    markPlayerDisconnected(lobby, playerId);
+    const key = `${lobbyId}:${playerId}`;
+    const existing = lobbyDisconnectTimers.get(key);
+    if (existing) clearTimeout(existing);
+    const timeoutId = setTimeout(async () => {
+      lobbyDisconnectTimers.delete(key);
+      const l = getLobby(lobbyId);
+      if (!l) return;
+      // If they reconnected, disconnectedAt will be cleared.
+      const p = l.players.find(x => x.id === playerId);
+      if (!p || !p.disconnectedAt) return;
+      clearLobbyTurnTimer(lobbyId);
+      removePlayer(l, playerId);
+      await broadcastLobbyState(lobbyId);
+      setLobbyTurnTimer(lobbyId);
+    }, DISCONNECT_GRACE_MS);
+    lobbyDisconnectTimers.set(key, timeoutId);
   });
 });
 

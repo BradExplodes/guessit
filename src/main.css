@@ -107,6 +107,34 @@ textarea {
   margin-bottom: 1rem;
 }
 
+input[type="file"] {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.5rem;
+}
+
+.image-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.character-image-preview {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+}
+
 select.select {
   width: 100%;
   padding: 0.65rem 0.85rem;
@@ -405,6 +433,21 @@ textarea {
   text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.player-image-sticky {
+  position: absolute;
+  top: -56px;
+  left: 50%;
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 14px;
+  border: 2px solid var(--surface);
+  background: var(--surface2);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.18);
+  transform: translateX(-50%) rotate(4deg);
+  z-index: 1;
 }
 
 .game-info-panel {
@@ -764,6 +807,29 @@ textarea {
 .wavelength-guess-num {
   font-weight: 700;
   color: var(--text);
+}
+
+.wavelength-slider-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.wavelength-slider-row input[type="range"] {
+  flex: 1;
+  margin: 0;
+}
+
+.wavelength-slider-value {
+  min-width: 44px;
+  text-align: center;
+  font-weight: 800;
+  color: var(--text);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
 }
 
 .wavelength-score-badge {

@@ -10,6 +10,7 @@ let hostPassword = null;
 let turnCountdownIntervalId = null;
 let lastCountdownSecs = -1;
 let gameNotesLocal = null;
+let gameNotesCaret = null;
 let pendingJoinToken = null;
 let createGameType = 'guessit';
 
@@ -48,9 +49,19 @@ function render() {
   if (state && (state.phase === 'guessing' || state.phase === 'finished')) {
     const notesEl = getEl('notes-field');
     hadNotesFocus = !!(notesEl && document.activeElement === notesEl);
-    if (notesEl) gameNotesLocal = notesEl.value;
+    if (notesEl) {
+      gameNotesLocal = notesEl.value;
+      if (hadNotesFocus) {
+        gameNotesCaret = {
+          start: notesEl.selectionStart ?? 0,
+          end: notesEl.selectionEnd ?? 0,
+          scrollTop: notesEl.scrollTop ?? 0,
+        };
+      }
+    }
   } else {
     gameNotesLocal = null;
+    gameNotesCaret = null;
   }
   app.innerHTML = renderLobby();
   const isGameScreen = state && (
@@ -61,7 +72,16 @@ function render() {
   );
   app.classList.toggle('game-screen', !!isGameScreen);
   bindLobby();
-  if (hadNotesFocus) getEl('notes-field')?.focus();
+  if (hadNotesFocus) {
+    const el = getEl('notes-field');
+    if (el) {
+      el.focus();
+      if (gameNotesCaret) {
+        try { el.setSelectionRange(gameNotesCaret.start, gameNotesCaret.end); } catch (_) {}
+        try { el.scrollTop = gameNotesCaret.scrollTop; } catch (_) {}
+      }
+    }
+  }
 }
 
 function renderHome() {
@@ -353,6 +373,13 @@ function renderLobby() {
             <input type="text" id="word-for-next-input" placeholder="e.g. Einstein" value="${escapeHtml(state.myWordForNext || '')}" />
             <button class="btn ${me.ready ? 'btn-secondary' : ''}" id="btn-ready">${me.ready ? 'Unready' : 'Ready'}</button>
           </div>
+        <div class="character-row" style="margin-top:0.75rem;">
+          <div style="flex:1;">
+            <label style="margin-bottom:0.35rem;">Optional image (jpg/png)</label>
+            <input type="file" id="image-for-next-input" accept="image/png,image/jpeg" />
+            ${state.myImageForNext ? `<div class="image-preview-row"><img class="character-image-preview" src="${escapeHtml(state.myImageForNext)}" alt="Character preview" /><button class="btn btn-secondary" id="btn-clear-image">Clear image</button></div>` : ''}
+          </div>
+        </div>
         </div>
         ` : ''}
         ${isHost ? '<p class="subtitle" style="margin-bottom:0.5rem; font-size:0.85rem;">Order = who assigns for whom (first assigns for second, etc). Drag to reorder.</p>' : ''}
@@ -528,6 +555,34 @@ function bindLobby() {
     const word = getEl('word-for-next-input')?.value?.trim() ?? '';
     socket?.emit('set-word-for-next', { lobbyId, playerId, word });
   });
+  getEl('btn-clear-image')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    socket?.emit('set-image-for-next', { lobbyId, playerId, imageDataUrl: null });
+    const fileEl = getEl('image-for-next-input');
+    if (fileEl) fileEl.value = '';
+  });
+  getEl('image-for-next-input')?.addEventListener('change', async (e) => {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+    const isOk = file.type === 'image/png' || file.type === 'image/jpeg';
+    if (!isOk) {
+      alert('Please upload a JPG or PNG.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 2_000_000) {
+      alert('Image too large. Please use an image under 2MB.');
+      e.target.value = '';
+      return;
+    }
+    try {
+      const dataUrl = await resizeImageToDataUrl(file, 512);
+      socket?.emit('set-image-for-next', { lobbyId, playerId, imageDataUrl: dataUrl });
+    } catch (_) {
+      alert('Could not process image. Try a different file.');
+      e.target.value = '';
+    }
+  });
   getEl('btn-ready')?.addEventListener('click', () => {
     const me = state?.players?.find(p => p.isYou);
     if (!me) return;
@@ -584,6 +639,7 @@ function bindLobby() {
     socket?.emit('return-to-lobby', { lobbyId, playerId });
   });
   getEl('btn-leave')?.addEventListener('click', () => {
+    try { socket?.emit('leave-lobby', { lobbyId, playerId }); } catch (_) {}
     if (socket) socket.disconnect();
     socket = null;
     state = null;
@@ -612,11 +668,10 @@ function bindLobby() {
     socket?.emit('submit-wavelength-guess', { lobbyId, playerId, guess });
   };
   getEl('btn-wavelength-guess')?.addEventListener('click', submitWavelengthGuessFromForm);
-  getEl('wavelength-guess-input')?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      submitWavelengthGuessFromForm();
-    }
+  getEl('wavelength-guess-input')?.addEventListener('input', () => {
+    const v = getEl('wavelength-guess-input')?.value;
+    const out = getEl('wavelength-guess-value');
+    if (out && v != null) out.textContent = String(v);
   });
 }
 
@@ -667,9 +722,11 @@ function renderGameLayout(opts) {
     const place = placements.get(p.id);
     const label = p.name;
     const wordSticky = !p.isYou && p.word ? `<span class="player-word-sticky">${escapeHtml(p.word)}</span>` : '';
+    const imageSticky = !p.isYou && p.image ? `<img class="player-image-sticky" src="${escapeHtml(p.image)}" alt="Character" />` : '';
     return `
       <div class="player-dot ${active ? 'active' : 'inactive'} ${p.isYou ? 'you' : ''}" style="left:${left}%;top:${top}%;margin-left:-${dotHalf}px;margin-top:-${dotHalf}px;" title="${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}">
         ${wordSticky}
+        ${imageSticky}
         ${label}
         ${p.hasWon && place != null ? `<span class="badge badge-won">${ordinal(place)}</span>` : ''}
       </div>
@@ -821,14 +878,16 @@ function renderWavelengthLayout() {
     center = `
       <p class="turn-label">Guess the number</p>
       <p class="wavelength-category">${category}</p>
-      ${targetBlock}
       ${clueBlock}
       ${secsLeft != null ? `<p class="turn-timer">Time left: <strong id="turn-countdown">${secsLeft}</strong>s</p>` : ''}
       ${isClueGiver
         ? `<p class="subtitle" style="margin:0.75rem 0 0;">You’re the clue giver — waiting for guesses.</p>`
         : `
           <div class="guess-form center-guess-form">
-            <input type="text" id="wavelength-guess-input" inputmode="numeric" placeholder="1–20" ${canGuess ? '' : 'disabled'} />
+            <div class="wavelength-slider-row">
+              <input type="range" id="wavelength-guess-input" min="1" max="20" step="1" value="10" ${canGuess ? '' : 'disabled'} />
+              <div class="wavelength-slider-value"><span id="wavelength-guess-value">10</span></div>
+            </div>
             <div class="center-guess-buttons">
               <button class="btn" id="btn-wavelength-guess" ${canGuess ? '' : 'disabled'}>${alreadyGuessed ? 'Guessed' : 'Submit'}</button>
             </div>
@@ -908,6 +967,36 @@ function ordinal(n) {
   const s = ['th', 'st', 'nd', 'rd'];
   const v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function resizeImageToDataUrl(file, maxDim) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('read'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('img'));
+      img.onload = () => {
+        const w = img.width;
+        const h = img.height;
+        const scale = Math.min(1, maxDim / Math.max(w, h));
+        const outW = Math.max(1, Math.round(w * scale));
+        const outH = Math.max(1, Math.round(h * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = outW;
+        canvas.height = outH;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('ctx'));
+        ctx.drawImage(img, 0, 0, outW, outH);
+        const mime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const quality = mime === 'image/jpeg' ? 0.82 : undefined;
+        const dataUrl = canvas.toDataURL(mime, quality);
+        resolve(dataUrl);
+      };
+      img.src = String(reader.result || '');
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function getPlacements(players) {
