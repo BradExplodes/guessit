@@ -374,6 +374,7 @@ function toClient(lobby, forPlayerId) {
     currentTurnPlayerId: currentPlayer?.id ?? null,
     myNotes: me?.notes ?? '',
     myAssignedWord: me?.hasWon ? me.assignedWord : null,
+    myAssignedImage: me?.hasWon ? (me.assignedImage ?? null) : null,
     assigningTarget: (() => {
       if (lobby.phase !== 'assigning' || !forPlayerId) return null;
       const idx = lobby.players.findIndex(p => p.id === forPlayerId);

@@ -13,6 +13,10 @@ let gameNotesLocal = null;
 let gameNotesCaret = null;
 let pendingJoinToken = null;
 let createGameType = 'guessit';
+/** @type {number|null} */
+let wavelengthSliderLocal = null;
+/** @type {string|null} */
+let wavelengthSliderRoundKey = null;
 
 function getEl(id) {
   return document.getElementById(id);
@@ -43,6 +47,21 @@ function render() {
   if (!state) {
     app.innerHTML = '<p class="subtitle">Connecting…</p>';
     return;
+  }
+
+  // Wavelength: keep slider position stable across re-renders when other players submit guesses.
+  if (state.gameType === 'wavelength' && state.wavelength) {
+    const rk = `${state.wavelength.round}:${state.currentTurnPlayerId || ''}`;
+    if (wavelengthSliderRoundKey !== rk) {
+      wavelengthSliderRoundKey = rk;
+      wavelengthSliderLocal = null;
+    }
+  } else if (state.gameType !== 'wavelength') {
+    wavelengthSliderRoundKey = null;
+    wavelengthSliderLocal = null;
+  } else if (state.gameType === 'wavelength' && (state.phase === 'waiting' || state.phase === 'finished')) {
+    wavelengthSliderRoundKey = null;
+    wavelengthSliderLocal = null;
   }
 
   let hadNotesFocus = false;
@@ -461,6 +480,7 @@ function renderLobby() {
       currentTurnWrongGuesses: state.currentTurnWrongGuesses || [],
       guessHistory: state.guessHistory || [],
       myAssignedWord: state.myAssignedWord,
+      myAssignedImage: state.myAssignedImage,
       isMyTurn,
       isHost: state.isHost,
       myNotes: notesForLayout,
@@ -656,6 +676,8 @@ function bindLobby() {
     lobbyId = null;
     playerId = null;
     hostPassword = null;
+    wavelengthSliderLocal = null;
+    wavelengthSliderRoundKey = null;
     localStorage.removeItem('guessit_lobbyId');
     localStorage.removeItem('guessit_playerId');
     render();
@@ -675,6 +697,7 @@ function bindLobby() {
   const submitWavelengthGuessFromForm = () => {
     const guess = getEl('wavelength-guess-input')?.value?.trim();
     if (!guess) return;
+    wavelengthSliderLocal = Number(guess);
     socket?.emit('submit-wavelength-guess', { lobbyId, playerId, guess });
   };
   getEl('btn-wavelength-guess')?.addEventListener('click', submitWavelengthGuessFromForm);
@@ -682,6 +705,7 @@ function bindLobby() {
     const v = getEl('wavelength-guess-input')?.value;
     const out = getEl('wavelength-guess-value');
     if (out && v != null) out.textContent = String(v);
+    if (v != null && v !== '') wavelengthSliderLocal = Number(v);
   });
 }
 
@@ -703,6 +727,7 @@ function renderGameLayout(opts) {
     currentTurnWrongGuesses,
     guessHistory,
     myAssignedWord,
+    myAssignedImage,
     isMyTurn,
     isHost,
     myNotes,
@@ -731,8 +756,11 @@ function renderGameLayout(opts) {
     const active = p.isCurrentTurn;
     const place = placements.get(p.id);
     const label = p.name;
-    const wordSticky = !p.isYou && p.word ? `<span class="player-word-sticky">${escapeHtml(p.word)}</span>` : '';
-    const imageSticky = !p.isYou && p.image ? `<img class="player-image-sticky" src="${escapeHtml(p.image)}" alt="Character" />` : '';
+    const canSeeOwn = !!(p.isYou && p.hasWon);
+    const wordToShow = (!p.isYou ? p.word : (canSeeOwn ? myAssignedWord : null));
+    const imageToShow = (!p.isYou ? p.image : (canSeeOwn ? myAssignedImage : null));
+    const wordSticky = wordToShow ? `<span class="player-word-sticky">${escapeHtml(wordToShow)}</span>` : '';
+    const imageSticky = imageToShow ? `<img class="player-image-sticky" src="${escapeHtml(imageToShow)}" alt="Character" />` : '';
     return `
       <div class="player-dot ${active ? 'active' : 'inactive'} ${p.isYou ? 'you' : ''}" style="left:${left}%;top:${top}%;margin-left:-${dotHalf}px;margin-top:-${dotHalf}px;" title="${escapeHtml(p.name)}${p.isYou ? ' (you)' : ''}">
         ${wordSticky}
@@ -779,6 +807,7 @@ function renderGameLayout(opts) {
           ${wrongGuessesList ? `<p class="wrong-guess-msg">Wrong: ${wrongGuessesList}</p>` : ''}
           ${guessHistoryHtml ? `<div class="guess-history"><h4>Guess history</h4><ul class="guess-history-list">${guessHistoryHtml}</ul></div>` : ''}
           ${myAssignedWord ? `<p class="subtitle" style="margin-bottom:0.5rem;">Your word was: <strong>${escapeHtml(myAssignedWord)}</strong></p>` : ''}
+          ${myAssignedImage ? `<div class="image-preview-row" style="margin-top:0.5rem;"><img class="character-image-preview" src="${escapeHtml(myAssignedImage)}" alt="Your character" /></div>` : ''}
         </div>
         <div class="notepad-panel card">
           <label>Your notes</label>
@@ -885,6 +914,15 @@ function renderWavelengthLayout() {
       `;
   } else if (phase === 'wavelength_guessing') {
     const canGuess = !isClueGiver && !alreadyGuessed;
+    const myGuess = playerId && w?.guesses ? w.guesses[playerId] : null;
+    const sliderVal = (() => {
+      if (myGuess != null) return Number(myGuess);
+      if (wavelengthSliderLocal != null && Number.isFinite(wavelengthSliderLocal)) {
+        const clamped = Math.max(1, Math.min(20, Math.round(wavelengthSliderLocal)));
+        return clamped;
+      }
+      return 10;
+    })();
     center = `
       <p class="turn-label">Guess the number</p>
       <p class="wavelength-category">${category}</p>
@@ -895,8 +933,8 @@ function renderWavelengthLayout() {
         : `
           <div class="guess-form center-guess-form">
             <div class="wavelength-slider-row">
-              <input type="range" id="wavelength-guess-input" min="1" max="20" step="1" value="10" ${canGuess ? '' : 'disabled'} />
-              <div class="wavelength-slider-value"><span id="wavelength-guess-value">10</span></div>
+              <input type="range" id="wavelength-guess-input" min="1" max="20" step="1" value="${escapeHtml(String(sliderVal))}" ${canGuess ? '' : 'disabled'} />
+              <div class="wavelength-slider-value"><span id="wavelength-guess-value">${escapeHtml(String(sliderVal))}</span></div>
             </div>
             <div class="center-guess-buttons">
               <button class="btn" id="btn-wavelength-guess" ${canGuess ? '' : 'disabled'}>${alreadyGuessed ? 'Guessed' : 'Submit'}</button>

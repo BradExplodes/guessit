@@ -248,10 +248,15 @@ io.on('connection', (socket) => {
     const lobby = getLobby(lobbyId);
     if (!lobby) return socket.emit('error', { message: 'Lobby not found' });
     try {
-      clearLobbyTurnTimer(lobbyId);
+      // Do not reset the guess-phase deadline on each partial submission — that would
+      // postpone the server timeout indefinitely. Only reschedule when the round ends.
+      const wasGuessing = lobby.phase === 'wavelength_guessing';
       submitWavelengthGuess(lobby, playerId, guess);
       await broadcastLobbyState(lobbyId);
-      setLobbyTurnTimer(lobbyId);
+      if (!wasGuessing || lobby.phase !== 'wavelength_guessing') {
+        clearLobbyTurnTimer(lobbyId);
+        setLobbyTurnTimer(lobbyId);
+      }
     } catch (e) {
       socket.emit('error', { message: e.message });
     }
