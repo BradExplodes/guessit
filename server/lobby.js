@@ -305,13 +305,14 @@ function toClient(lobby, forPlayerId) {
     const w = lobby.wavelength;
     if (!w) return null;
     const isClueGiver = currentPlayer?.id && forPlayerId === currentPlayer.id;
-    const targetVisible = lobby.phase !== 'wavelength_clue';
     return {
       round: w.round,
       categoryLeft: w.categoryLeft,
       categoryRight: w.categoryRight,
       clueText: targetVisible ? (w.clueText ?? '') : null,
-      target: (targetVisible || isClueGiver) ? w.target : null,
+      clueText: lobby.phase !== 'wavelength_clue' ? (w.clueText ?? '') : null,
+      // Keep the target secret from guessers; they learn it after the round (in lastRound).
+      target: isClueGiver ? w.target : null,
       guesses: w.guesses ? Object.fromEntries(Object.entries(w.guesses).map(([pid, g]) => [pid, g])) : {},
       lastRound: w.lastRound ?? null,
       clueSeconds: w.clueSeconds,
